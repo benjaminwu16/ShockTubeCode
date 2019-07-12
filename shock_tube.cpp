@@ -19,6 +19,7 @@
 #include <sstream>    // stringstream
 #include <stdexcept>  // runtime_error
 #include <string>
+#include <random>
 
 // Athena++ headers
 #include "../athena.hpp"
@@ -31,12 +32,21 @@
 #include "../mesh/mesh.hpp"
 #include "../parameter_input.hpp"
 
+const Real cosPiOver8 = 0.923879532511286;
+const Real pi = 3.141592653589793238;
+
 static Real d, u, p;
+Real wl[NHYDRO+NFIELD];
+Real wr[NHYDRO+NFIELD];
 
 // fixes BCs on L-x1 (left edge) of grid to postshock flow.
 void ShockTube_InnerX1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
                        FaceField &b, Real time, Real dt,
                        int is, int ie, int js, int je, int ks, int ke, int ngh);
+
+void Reflect_OuterX1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
+                    FaceField &b, Real time, Real dt,
+int is, int ie, int js, int je, int ks, int ke, int ngh);
 
 Real Pos(MeshBlock *pmb, int iout);
 Real momDiff(MeshBlock *pmb, int iout);
@@ -51,6 +61,7 @@ Real secJump(MeshBlock *pmb, int iout);
 void Mesh::InitUserMeshData(ParameterInput *pin) {
 // Set IIB value function pointer
   EnrollUserBoundaryFunction(INNER_X1, ShockTube_InnerX1);
+  EnrollUserBoundaryFunction(OUTER_X1, Reflect_OuterX1);
   AllocateUserHistoryOutput(1);
   EnrollUserHistoryOutput(0, Pos, "ShockPos");
   //EnrollUserHistoryOutput(1, momDiff, "first jump");
@@ -309,7 +320,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
   }
 
   // Parse left state read from input file: dl,ul,vl,wl,[pl]
-  Real wl[NHYDRO+NFIELD];
+  //Real wl[NHYDRO+NFIELD];
   wl[IDN] = pin->GetReal("problem","dl");
   wl[IVX] = pin->GetReal("problem","ul");
   wl[IVY] = pin->GetReal("problem","vl");
@@ -322,7 +333,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
   }
 
   // Parse right state read from input file: dr,ur,vr,wr,[pr]
-  Real wr[NHYDRO+NFIELD];
+  //Real wr[NHYDRO+NFIELD];
   wr[IDN] = pin->GetReal("problem","dr");
   wr[IVX] = pin->GetReal("problem","ur");
   wr[IVY] = pin->GetReal("problem","vr");
@@ -540,6 +551,61 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
   return;
 }
 
+//probability power law distribution
+Real power_law(Real L, Real a) {
+  return 1/(1+pow(L*a, 8.0/3.0));
+}
+
+//returns density value for given x, y
+Real return_d(Real x, Real y, int steps, Real variance, Real L, Real avg) {
+  std::random_device rd;
+  std::mt19937 gen(rd());  
+  std::uniform_real_distribution<> dis(0.0, 1.0);
+
+  Real k = 0.05*L;
+  Real res = 0;
+  Real ratio = pow(100, 1.0/steps);
+  Real delta_k = k;
+  Real prev_k = k;
+  //return mult;
+  Real c, temp = 0;
+
+  //find normalization constant
+  for(int i=0; i<steps; i++) {
+    temp += (2 * pi * k * delta_k * power_law(L, k));
+    prev_k = k;
+    k *= ratio;
+    delta_k = k - prev_k;
+  }
+
+  c = variance/temp;
+  //return c;  
+  
+  k = 0.05*L;
+  delta_k = k;
+  prev_k = k;
+
+  //sum over wave modes
+  for(int i=0; i<steps; i++) {
+    //generate random angles between 0 and 2pi	  
+    Real theta = dis(gen);
+    theta *= (2*pi);
+    Real phi = dis(gen);
+    phi *= (2*pi);
+    
+    //calculate
+    Real f1 = sqrt(c * 4 * pi * k * delta_k * power_law(L, k));
+    Real f2 = cos(k * x * cos(theta) + k * y * sin(theta) + phi);
+    res += (f1 * f2);
+    //f_values.push_back(f1*f2);
+    prev_k = k;
+    k *= ratio;
+    delta_k = k - prev_k;
+  }
+  return avg*exp(-0.11957+res);  
+}
+
+
 //----------------------------------------------------------------------------------------
 //! \fn void ShockTube_InnerX1()
 //  \brief Sets boundary condition on left X boundary (iib)
@@ -549,16 +615,26 @@ void ShockTube_InnerX1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
     for (int i=1; i<=ngh; ++i) {
-      prim(IDN,k,j,is-i) = d;
+      prim(IDN,k,j,is-i) = return_d((Real)is-i,(Real)j,100,0.254031,1.0,2.75);
       prim(IVX,k,j,is-i) = u;
       prim(IVY,k,j,is-i) = 0.0;
       prim(IVZ,k,j,is-i) = 0.0;
       prim(IPR,k,j,is-i) = p;
+      
+      b.x1f(k,j,is-i) = wl[NHYDRO+0];
+      b.x2f(k,j,is-i) = wl[NHYDRO+1];
+      b.x3f(k,j,is-i) = wl[NHYDRO+2];
+	 if (NON_BAROTROPIC_EOS) {
+          pmb->phydro->u(IEN,k,j,is-i) += 0.5*(SQR(b.x1f(k,j,is-i))
+            + SQR(b.x2f(k,j,is-i)) + SQR(b.x3f(k,j,is-i)));
+        }
 
     }
   }}
 }
 
+//1D/2D
+//Get position of shock
 Real Pos(MeshBlock *pmb, int iout) { 
   Real m1=-1, pos=5, ld, rd;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
@@ -576,6 +652,8 @@ Real Pos(MeshBlock *pmb, int iout) {
   return pos;
 }
 
+//1D
+//Checking first hydrodynamic jump condition
 Real momDiff(MeshBlock *pmb, int iout) {
   Real m1 = 100, m2 = 0, rd, ld;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
@@ -598,7 +676,8 @@ Real momDiff(MeshBlock *pmb, int iout) {
 
 }
 
-
+//1D
+//Checking second hydrodynamic jump condition
 Real secJump(MeshBlock *pmb, int iout) {
   Real m1 = 100, m2 = 0, rd, ld;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
@@ -624,4 +703,29 @@ Real secJump(MeshBlock *pmb, int iout) {
   return m1-m2;
 
 
+}
+
+void Reflect_OuterX1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
+                    FaceField &b, Real time, Real dt,
+                    int is, int ie, int js, int je, int ks, int ke, int ngh) {
+  // copy hydro variables into ghost zones, reflecting v1
+  for (int n=0; n<(NHYDRO); ++n) {
+    if (n==(IVX)) {
+      for (int k=ks; k<=ke; ++k) {
+      for (int j=js; j<=je; ++j) {
+#pragma omp simd
+        for (int i=1; i<=ngh; ++i) {
+          prim(IVX,k,j,ie+i) = -prim(IVX,k,j,(ie-i+1));  // reflect 1-velocity
+        }
+      }}
+    } else {
+      for (int k=ks; k<=ke; ++k) {
+      for (int j=js; j<=je; ++j) {
+#pragma omp simd
+        for (int i=1; i<=ngh; ++i) {
+          prim(n,k,j,ie+i) = prim(n,k,j,(ie-i+1));
+        }
+      }}
+    }
+  }
 }
