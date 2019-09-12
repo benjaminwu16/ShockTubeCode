@@ -31,6 +31,7 @@
 #include "../cless/cless.hpp"
 #include "../mesh/mesh.hpp"
 #include "../parameter_input.hpp"
+#include "../bvals/bvals.hpp"
 
 const Real cosPiOver8 = 0.923879532511286;
 const Real pi = 3.141592653589793238;
@@ -40,17 +41,18 @@ Real wl[NHYDRO+NFIELD];
 Real wr[NHYDRO+NFIELD];
 
 // fixes BCs on L-x1 (left edge) of grid to postshock flow.
-void ShockTube_InnerX1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
-                       FaceField &b, Real time, Real dt,
-                       int is, int ie, int js, int je, int ks, int ke, int ngh);
+void stInner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim, FaceField &b, Real time, Real dt, int is, int ie, int js, int je, int ks, int ke, int ngh);
 
-void Reflect_OuterX1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
+void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
                     FaceField &b, Real time, Real dt,
 int is, int ie, int js, int je, int ks, int ke, int ngh);
 
 Real Pos(MeshBlock *pmb, int iout);
-Real momDiff(MeshBlock *pmb, int iout);
-Real secJump(MeshBlock *pmb, int iout);
+Real firstJump_oneDimension(MeshBlock *pmb, int iout);
+Real firstJump_twoDimensions(MeshBlock *pmb, int iout);
+Real secJump_oneDimension(MeshBlock *pmb, int iout);
+Real secJump_twoDimensions(MeshBlock *pmb, int iout);
+
 //========================================================================================
 //! \fn void Mesh::InitUserMeshData(ParameterInput *pin)
 //  \brief Function to initialize problem-specific data in mesh class.  Can also be used
@@ -60,12 +62,13 @@ Real secJump(MeshBlock *pmb, int iout);
 
 void Mesh::InitUserMeshData(ParameterInput *pin) {
 // Set IIB value function pointer
-  EnrollUserBoundaryFunction(INNER_X1, ShockTube_InnerX1);
-  EnrollUserBoundaryFunction(OUTER_X1, Reflect_OuterX1);
+  
+  EnrollUserBoundaryFunction(INNER_X1, stInner_ix1);
+  EnrollUserBoundaryFunction(OUTER_X1, reflect_ox1);
   AllocateUserHistoryOutput(3);
   EnrollUserHistoryOutput(0, Pos, "ShockPos");
-  EnrollUserHistoryOutput(1, momDiff, "first jump");
-  EnrollUserHistoryOutput(2, secJump, "second jump");
+  EnrollUserHistoryOutput(1, firstJump_twoDimensions, "first jump");
+  EnrollUserHistoryOutput(2, secJump_twoDimensions, "second jump");
   return;
 }
 
@@ -103,8 +106,6 @@ Real return_d(Real x, Real y, int steps, Real variance, Real L, Real avg) {
   k = 0.05*L;
   delta_k = k;
   prev_k = k;
-
-  //sum over wave modes
 
   //sum over wave modes
   for(int i=0; i<steps; i++) {
@@ -829,7 +830,7 @@ Real Pos(MeshBlock *pmb, int iout) {
 
 //1D
 //Checking first hydrodynamic jump condition
-Real momDiff(MeshBlock *pmb, int iout) {
+Real firstJump_oneDimension(MeshBlock *pmb, int iout) {
   Real m1 = 1.0, m2 = 1.0, rd, ld;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
   for (int k=ks; k<=ke; ++k) {
@@ -853,7 +854,7 @@ Real momDiff(MeshBlock *pmb, int iout) {
 
 //1D
 //Checking second hydrodynamic jump condition
-Real secJump(MeshBlock *pmb, int iout) {
+Real secJump_oneDimension(MeshBlock *pmb, int iout) {
   Real m1 = 1.0, m2 = 1.0, rd, ld;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
   for (int k=ks; k<=ke; ++k) {
@@ -866,3 +867,95 @@ Real secJump(MeshBlock *pmb, int iout) {
 	Real ru = pmb->phydro->w(IVX,k,j,i+4)+1.16;
 	Real lp = pmb->phydro->u(IPR,k,j,i);
 	Real rp = pmb->phydro->u(IPR,k,j,i+4);
+	m1 = lu*lu*ld + lp;
+	m2 = ru*ru*rd + rp;
+//	m1 = pmb->phydro->u(IDN,k,j,i);
+//	m2 = pmb->phydro->w(IDN,k,j,i);
+	break;
+      }
+    }
+  }}
+
+  return m1/m2;
+
+
+}
+
+//2D
+//1st jump condition
+Real firstJump_twoDimensions(MeshBlock *pmb, int iout) {
+  Real m1 = 1.0, m2 = 1.0, lsum = 0, rsum = 0;
+  int pos = 0;
+  int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
+  for (int k=ks; k<=ke; ++k) {
+  for (int i=is; i<=ie; ++i) {
+    rsum = 0;
+    for (int j=js; j<=je; ++j) {
+	rsum += pmb->phydro->w(IVX,k,j,i);     
+    }
+    if (i > is && abs(lsum - rsum) > 5.0) {
+      pos = i-1;
+      break;
+    }
+    lsum = rsum;
+  }}
+  lsum = 0, rsum = 0;
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for(int i=std::max(is, pos-2); i<=pos; ++i) {
+	lsum += pmb->phydro->w(IVX,k,j,i)*w(IDN,k,j,i);
+	}
+  }}
+  Real diff1 = pos - std::max(is, pos-2) + 1;
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for(int i=std::min(pos+3, ie); i<=std::min(pos+5, ie); ++i) {
+	rsum += pmb->phydro->w(IVX,k,j,i)*w(IDN,k,j,i);
+	}
+  }}
+  Real diff2 = std::min(pos+5, ie) - std::min(pos+3, ie) + 1;
+  lsum /= (js-je+1)*diff1;
+  rsum /= (js-je+1)*diff2;
+  return (rsum == 0) ? 0.0 : lsum/rsum;
+
+}
+
+Real secJump_twoDimensions(MeshBlock *pmb, int iout) {
+  Real m1 = 1.0, m2 = 1.0, lsum = 0, rsum = 0;
+  int pos = 0;
+  int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
+  for (int k=ks; k<=ke; ++k) {
+  for (int i=is; i<=ie; ++i) {
+    rsum = 0;
+    for (int j=js; j<=je; ++j) {
+	rsum += pmb->phydro->w(IVX,k,j,i);     
+    }
+    if (i > is && abs(lsum - rsum) > 5.0) {
+      pos = i-1;
+      break;
+    }
+    lsum = rsum;
+  }}
+  lsum = 0, rsum = 0;
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for(int i=std::max(is, pos-2); i<=pos; ++i) {
+	lsum += pmb->phydro->w(IVX,k,j,i)*w(IDN,k,j,i)*w(IVX,k,j,i) + 
+		pmb->phydro->w(IPR,k,j,i);
+	}
+  }}
+  Real diff1 = pos - std::max(is, pos-2) + 1;
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for(int i=std::min(pos+3, ie); i<=std::min(pos+5, ie); ++i) {		       rsum += pmb->phydro->w(IVX,k,j,i)*w(IDN,k,j,i)*w(IVX,k,j,i) + 
+		pmb->phydro->w(IPR,k,j,i);
+}
+  }}
+  Real diff2 = std::min(pos+5, ie) - std::min(pos+3, ie) + 1;
+  lsum /= (js-je+1)*diff1;
+  rsum /= (js-je+1)*diff2;
+  return (rsum == 0) ? 0.0 : lsum/rsum;
+
+}
+
+
