@@ -62,12 +62,174 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
 // Set IIB value function pointer
   EnrollUserBoundaryFunction(INNER_X1, ShockTube_InnerX1);
   EnrollUserBoundaryFunction(OUTER_X1, Reflect_OuterX1);
-  AllocateUserHistoryOutput(1);
+  AllocateUserHistoryOutput(3);
   EnrollUserHistoryOutput(0, Pos, "ShockPos");
-  //EnrollUserHistoryOutput(1, momDiff, "first jump");
-  //EnrollUserHistoryOutput(2, secJump, "second jump");
+  EnrollUserHistoryOutput(1, momDiff, "first jump");
+  EnrollUserHistoryOutput(2, secJump, "second jump");
   return;
 }
+
+
+//probability power law distribution
+Real power_law(Real L, Real a) {
+  return 1/(1+pow(L*a, 8.0/3.0));
+}
+
+//returns density value for given x, y
+Real return_d(Real x, Real y, int steps, Real variance, Real L, Real avg) {
+  std::random_device rd;
+  std::mt19937 gen(rd());  
+  std::uniform_real_distribution<> dis(0.0, 1.0);
+
+  Real k = 0.05*L;
+  Real res = 0;
+  Real ratio = pow(100, 1.0/steps);
+  Real delta_k = k;
+  Real prev_k = k;
+  //return mult;
+  Real c, temp = 0;
+
+  //find normalization constant
+  for(int i=0; i<steps; i++) {
+    temp += (2 * pi * k * delta_k * power_law(L, k));
+    prev_k = k;
+    k *= ratio;
+    delta_k = k - prev_k;
+  }
+
+  c = variance/temp;
+  //return c;  
+  
+  k = 0.05*L;
+  delta_k = k;
+  prev_k = k;
+
+  //sum over wave modes
+
+  //sum over wave modes
+  for(int i=0; i<steps; i++) {
+    //generate random angles between 0 and 2pi	  
+    Real theta = dis(gen);
+    theta *= (2*pi);
+    Real phi = dis(gen);
+    phi *= (2*pi);
+    
+    //calculate
+    Real f1 = sqrt(c * 4 * pi * k * delta_k * power_law(L, k));
+    Real f2 = cos(k * x * cos(theta) + k * y * sin(theta) + phi);
+    res += (f1 * f2);
+    //f_values.push_back(f1*f2);
+    prev_k = k;
+    k *= ratio;
+    delta_k = k - prev_k;
+  }
+  return avg*exp(-0.11957+res);  
+}
+
+//returns x-component of magnetic field
+Real return_mx(Real x, Real y, int steps, Real variance, Real L, Real avg) {
+  std::random_device rd;
+  std::mt19937 gen(rd());  
+  std::uniform_real_distribution<> dis(0.0, 1.0);
+  if(avg == 0) {
+    return 0.0;
+  }
+  Real k = 0.05*L;
+  Real res = 0;
+  Real ratio = pow(100, 1.0/steps);
+  Real delta_k = k;
+  Real prev_k = k;
+  //return mult;
+  Real c, temp = 0;
+
+  //find normalization constant
+  for(int i=0; i<steps; i++) {
+    temp += (2 * pi * k * delta_k * power_law(L, k));
+    prev_k = k;
+    k *= ratio;
+    delta_k = k - prev_k;
+  }
+
+  c = variance/temp;
+  //return c;  
+  
+  k = 0.05*L;
+  delta_k = k;
+  prev_k = k;
+
+  //sum over wave modes
+  for(int i=0; i<steps; i++) {
+    //generate random angles between 0 and 2pi	  
+    Real theta = dis(gen);
+    theta *= (2*pi);
+    Real phi = dis(gen);
+    phi *= (2*pi);
+    Real alpha = dis(gen);
+    alpha *= (2*pi);
+    //calculate
+    Real f1 = sqrt(c * 4 * pi * k * delta_k * power_law(L, k));
+    Real f2 = cos(k * x * cos(theta) + k * y * sin(theta) + phi);
+    res += (f1 * f2 * cos(alpha));
+    //f_values.push_back(f1*f2);
+    prev_k = k;
+    k *= ratio;
+    delta_k = k - prev_k;
+  }
+  return avg*exp(res);  
+}
+
+//returns y-component of magnetic field
+Real return_my(Real x, Real y, int steps, Real variance, Real L, Real avg) {
+  std::random_device rd;
+  std::mt19937 gen(rd());  
+  std::uniform_real_distribution<> dis(0.0, 1.0);
+  if(avg == 0) {
+    return 0.0;
+  }
+  Real k = 0.05*L;
+  Real res = 0;
+  Real ratio = pow(100, 1.0/steps);
+  Real delta_k = k;
+  Real prev_k = k;
+  //return mult;
+  Real c, temp = 0;
+
+  //find normalization constant
+  for(int i=0; i<steps; i++) {
+    temp += (2 * pi * k * delta_k * power_law(L, k));
+    prev_k = k;
+    k *= ratio;
+    delta_k = k - prev_k;
+  }
+
+  c = variance/temp;
+  //return c;  
+  
+  k = 0.05*L;
+  delta_k = k;
+  prev_k = k;
+
+  //sum over wave modes
+  for(int i=0; i<steps; i++) {
+    //generate random angles between 0 and 2pi	  
+    Real theta = dis(gen);
+    theta *= (2*pi);
+    Real phi = dis(gen);
+    phi *= (2*pi);
+    Real alpha = dis(gen);
+    alpha *= (2*pi);
+    //calculate
+    Real f1 = sqrt(c * 4 * pi * k * delta_k * power_law(L, k));
+    Real f2 = cos(k * x * cos(theta) + k * y * sin(theta) + phi);
+    res += (f1 * f2 * sin(alpha));
+    //f_values.push_back(f1*f2);
+    prev_k = k;
+    k *= ratio;
+    delta_k = k - prev_k;
+  }
+  return avg*exp(res);  
+}
+
 
 //========================================================================================
 //! \fn void Mesh::UserWorkAfterLoop(ParameterInput *pin)
@@ -358,13 +520,14 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     for (int j=js; j<=je; ++j) {
       for (int i=is; i<=ie; ++i) {
         if (pcoord->x1v(i) < xshock) {
-          phydro->u(IDN,k,j,i) = wl[IDN];
-          phydro->u(IM1,k,j,i) = wl[IVX]*wl[IDN];
+          phydro->u(IDN,k,j,i) = return_d((Real)i,(Real)j,100,0.254031,1.0,d);
+	  //phydro->u(IDN,k,j,i) = wl[IDN];
+          phydro->u(IM1,k,j,i) = wl[IVX]*phydro->u(IDN,k,j,i);
           phydro->u(IM2,k,j,i) = wl[IVY]*wl[IDN];
           phydro->u(IM3,k,j,i) = wl[IVZ]*wl[IDN];
           if (NON_BAROTROPIC_EOS) phydro->u(IEN,k,j,i) =
             wl[IPR]/(peos->GetGamma() - 1.0)
-            + 0.5*wl[IDN]*(wl[IVX]*wl[IVX] + wl[IVY]*wl[IVY] + wl[IVZ]*wl[IVZ]);
+            + 0.5*phydro->u(IDN,k,j,i)*(wl[IVX]*wl[IVX] + wl[IVY]*wl[IVY] + wl[IVZ]*wl[IVZ]);
 				
 					if (CLESS_ENABLED) {
 						pcless->u(IDN ,k,j,i) = phydro->u(IDN,k,j,i); 
@@ -500,8 +663,10 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     for (int j=js; j<=je; ++j) {
       for (int i=is; i<=ie; ++i) {
         if (shk_dir==1 && pcoord->x1v(i) < xshock) {
-          pfield->b.x1f(k,j,i) = wl[NHYDRO  ];
-          pfield->b.x2f(k,j,i) = wl[NHYDRO+1];
+	  pfield->b.x1f(k,j,i) = wl[NHYDRO];
+	  pfield->b.x2f(k,j,i) = wl[NHYDRO+1];          
+//pfield->b.x1f(k,j,i) =  return_mx((Real)i,(Real)j,100,0.254031,1.0,wl[NHYDRO]);
+	  //pfield->b.x2f(k,j,i) =  return_my((Real)i,(Real)j,100,0.254031,1.0,wl[NHYDRO+1]);
           pfield->b.x3f(k,j,i) = wl[NHYDRO+2];
         } else if (shk_dir==2 && pcoord->x2v(j) < xshock) {
           pfield->b.x1f(k,j,i) = wl[NHYDRO+2];
@@ -551,87 +716,97 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
   return;
 }
 
-//probability power law distribution
-Real power_law(Real L, Real a) {
-  return 1/(1+pow(L*a, 8.0/3.0));
-}
-
-//returns density value for given x, y
-Real return_d(Real x, Real y, int steps, Real variance, Real L, Real avg) {
-  std::random_device rd;
-  std::mt19937 gen(rd());  
-  std::uniform_real_distribution<> dis(0.0, 1.0);
-
-  Real k = 0.05*L;
-  Real res = 0;
-  Real ratio = pow(100, 1.0/steps);
-  Real delta_k = k;
-  Real prev_k = k;
-  //return mult;
-  Real c, temp = 0;
-
-  //find normalization constant
-  for(int i=0; i<steps; i++) {
-    temp += (2 * pi * k * delta_k * power_law(L, k));
-    prev_k = k;
-    k *= ratio;
-    delta_k = k - prev_k;
-  }
-
-  c = variance/temp;
-  //return c;  
-  
-  k = 0.05*L;
-  delta_k = k;
-  prev_k = k;
-
-  //sum over wave modes
-  for(int i=0; i<steps; i++) {
-    //generate random angles between 0 and 2pi	  
-    Real theta = dis(gen);
-    theta *= (2*pi);
-    Real phi = dis(gen);
-    phi *= (2*pi);
-    
-    //calculate
-    Real f1 = sqrt(c * 4 * pi * k * delta_k * power_law(L, k));
-    Real f2 = cos(k * x * cos(theta) + k * y * sin(theta) + phi);
-    res += (f1 * f2);
-    //f_values.push_back(f1*f2);
-    prev_k = k;
-    k *= ratio;
-    delta_k = k - prev_k;
-  }
-  return avg*exp(-0.11957+res);  
-}
-
 
 //----------------------------------------------------------------------------------------
-//! \fn void ShockTube_InnerX1()
+//! \fn void stInner_ix1()
 //  \brief Sets boundary condition on left X boundary (iib)
-void ShockTube_InnerX1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
+void stInner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
                        FaceField &b, Real time, Real dt,
                        int is, int ie, int js, int je, int ks, int ke, int ngh) {
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
     for (int i=1; i<=ngh; ++i) {
-      prim(IDN,k,j,is-i) = return_d((Real)is-i,(Real)j,100,0.254031,1.0,2.75);
+      prim(IDN,k,j,is-i) = d;
+      //return_d((Real)i,(Real)j,100,0.254031,1.0,wl[IDN]);
+      //prim(IDN,k,j,is-i) = d;
       prim(IVX,k,j,is-i) = u;
       prim(IVY,k,j,is-i) = 0.0;
       prim(IVZ,k,j,is-i) = 0.0;
       prim(IPR,k,j,is-i) = p;
       
-      b.x1f(k,j,is-i) = wl[NHYDRO+0];
+      if(MAGNETIC_FIELDS_ENABLED) {
+      b.x1f(k,j,is-i) = wl[NHYDRO]; 
       b.x2f(k,j,is-i) = wl[NHYDRO+1];
+      //b.x1f(k,j,is-i) =  return_mx((Real)i,(Real)j,100,0.254031,1.0,wl[NHYDRO]);
+      //b.x2f(k,j,is-i) =  return_my((Real)i,(Real)j,100,0.254031,1.0,wl[NHYDRO+1]);
+
       b.x3f(k,j,is-i) = wl[NHYDRO+2];
+      
 	 if (NON_BAROTROPIC_EOS) {
           pmb->phydro->u(IEN,k,j,is-i) += 0.5*(SQR(b.x1f(k,j,is-i))
             + SQR(b.x2f(k,j,is-i)) + SQR(b.x3f(k,j,is-i)));
         }
-
+      }
     }
   }}
 }
+
+
+void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
+                    FaceField &b, Real time, Real dt,
+                    int is, int ie, int js, int je, int ks, int ke, int ngh) {
+ // copy hydro variables into ghost zones, reflecting v1
+  for (int n=0; n<(NHYDRO); ++n) {
+    if (n==(IVX)) {
+      for (int k=ks; k<=ke; ++k) {
+      for (int j=js; j<=je; ++j) {
+#pragma omp simd
+        for (int i=1; i<=ngh; ++i) {
+          prim(IVX,k,j,ie+i) = -prim(IVX,k,j,(ie-i+1));  // reflect 1-velocity
+        }
+      }}
+    } else {
+      for (int k=ks; k<=ke; ++k) {
+      for (int j=js; j<=je; ++j) {
+#pragma omp simd
+        for (int i=1; i<=ngh; ++i) {
+          prim(n,k,j,ie+i) = prim(n,k,j,(ie-i+1));
+        }
+      }}
+    }
+  }
+
+
+  // copy face-centered magnetic fields into ghost zones, reflecting b1
+  if (MAGNETIC_FIELDS_ENABLED) {
+    for (int k=ks; k<=ke; ++k) {
+    for (int j=js; j<=je; ++j) {
+#pragma omp simd
+      for (int i=1; i<=ngh; ++i) {
+        b.x1f(k,j,(ie+i+1)) = -b.x1f(k,j,(ie-i+1  ));  // reflect 1-field
+      }
+    }}
+
+    for (int k=ks; k<=ke; ++k) {
+    for (int j=js; j<=je+1; ++j) {
+#pragma omp simd
+      for (int i=1; i<=ngh; ++i) {
+        b.x2f(k,j,(ie+i)) =  b.x2f(k,j,(ie-i+1));
+      }
+    }}
+
+    for (int k=ks; k<=ke+1; ++k) {
+    for (int j=js; j<=je; ++j) {
+#pragma omp simd
+      for (int i=1; i<=ngh; ++i) {
+        b.x3f(k,j,(ie+i)) =  b.x3f(k,j,(ie-i+1));
+      }
+    }}
+  }
+
+ 
+}
+
 
 //1D/2D
 //Get position of shock
@@ -655,77 +830,39 @@ Real Pos(MeshBlock *pmb, int iout) {
 //1D
 //Checking first hydrodynamic jump condition
 Real momDiff(MeshBlock *pmb, int iout) {
-  Real m1 = 100, m2 = 0, rd, ld;
+  Real m1 = 1.0, m2 = 1.0, rd, ld;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
-    for (int i=is; i<=ie-3; ++i) {
+    for (int i=is; i<=ie-4; ++i) {
       ld = pmb->phydro->u(IDN,k,j,i);
-      rd = pmb->phydro->u(IDN,k,j,i+1);
-      if(rd >= ld + 0.2) {
+      rd = pmb->phydro->u(IDN,k,j,i+4);
+      if(rd >= ld + 0.3) {
  	Real lu = pmb->phydro->w(IVX,k,j,i)+1.16;
-	Real ru = pmb->phydro->w(IVX,k,j,i+3)+1.16;
+	Real ru = pmb->phydro->w(IVX,k,j,i+4)+1.16;
 	m1 = lu*ld;
-	m2 = ru*pmb->phydro->u(IDN,k,j,i+3);
+	m2 = ru*pmb->phydro->u(IDN,k,j,i+4);
 	break;
       }
     }
   }}
 
-  return m1-m2;
+  return m1/m2;
 
 }
 
 //1D
 //Checking second hydrodynamic jump condition
 Real secJump(MeshBlock *pmb, int iout) {
-  Real m1 = 100, m2 = 0, rd, ld;
+  Real m1 = 1.0, m2 = 1.0, rd, ld;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
-    for (int i=is; i<=ie-3; ++i) {
+    for (int i=is; i<=ie-4; ++i) {
       ld = pmb->phydro->u(IDN,k,j,i);
-      rd = pmb->phydro->u(IDN,k,j,i+1);
-      if(rd >= ld + 0.2) {
+      rd = pmb->phydro->u(IDN,k,j,i+4);
+      if(rd >= ld + 0.3) {
  	Real lu = pmb->phydro->w(IVX,k,j,i)+1.16;
-	Real ru = pmb->phydro->w(IVX,k,j,i+3)+1.16;
+	Real ru = pmb->phydro->w(IVX,k,j,i+4)+1.16;
 	Real lp = pmb->phydro->u(IPR,k,j,i);
-	Real rp = pmb->phydro->u(IPR,k,j,i+3);
-//	m1 = lu*lu*ld + lp;
-//	m2 = ru*ru*rd + rp;
-	m1 = pmb->phydro->u(IDN,k,j,i);
-	m2 = pmb->phydro->w(IDN,k,j,i);
-	break;
-      }
-    }
-  }}
-
-  return m1-m2;
-
-
-}
-
-void Reflect_OuterX1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
-                    FaceField &b, Real time, Real dt,
-                    int is, int ie, int js, int je, int ks, int ke, int ngh) {
-  // copy hydro variables into ghost zones, reflecting v1
-  for (int n=0; n<(NHYDRO); ++n) {
-    if (n==(IVX)) {
-      for (int k=ks; k<=ke; ++k) {
-      for (int j=js; j<=je; ++j) {
-#pragma omp simd
-        for (int i=1; i<=ngh; ++i) {
-          prim(IVX,k,j,ie+i) = -prim(IVX,k,j,(ie-i+1));  // reflect 1-velocity
-        }
-      }}
-    } else {
-      for (int k=ks; k<=ke; ++k) {
-      for (int j=js; j<=je; ++j) {
-#pragma omp simd
-        for (int i=1; i<=ngh; ++i) {
-          prim(n,k,j,ie+i) = prim(n,k,j,(ie-i+1));
-        }
-      }}
-    }
-  }
-}
+	Real rp = pmb->phydro->u(IPR,k,j,i+4);
