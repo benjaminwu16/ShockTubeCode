@@ -1,19 +1,19 @@
 //========================================================================================
-// Athena++ astrophysical MHD code
-// Copyright(C) 2014 James M. Stone <jmstone@princeton.edu> and other code contributors
-// Licensed under the 3-clause BSD License, see LICENSE file for details
+// athena++ astrophysical mhd code
+// copyright(c) 2014 james m. stone <jmstone@princeton.edu> and other code contrIButors
+// licensed under the 3-clause bsd license, see license FILE for details
 //========================================================================================
-//! \file shock_tube.cpp
-//  \brief Problem generator for shock tube problems.
+//! \FILE shock_tube.cpp
+//  \brief problem generator for shock tube problems.
 //
-// Problem generator for shock tube (1-D Riemann) problems. Initializes plane-parallel
-// shock along x1 (in 1D, 2D, 3D), along x2 (in 2D, 3D), and along x3 (in 3D).
+// problem generator for shock tube (1-d riemann) problems. initializes plane-parallel
+// shock along x1 (in 1d, 2d, 3d), along x2 (in 2d, 3d), and along x3 (in 3d).
 //========================================================================================
 
-// C headers
+// c headers
 #include <stdio.h>
 
-// C++ headers
+// c++ headers
 #include <cmath>      // sqrt()
 #include <iostream>   // endl
 #include <sstream>    // stringstream
@@ -21,7 +21,7 @@
 #include <string>
 #include <random>
 
-// Athena++ headers
+// athena++ headers
 #include "../athena.hpp"
 #include "../athena_arrays.hpp"
 #include "../coordinates/coordinates.hpp"
@@ -33,60 +33,51 @@
 #include "../parameter_input.hpp"
 #include "../bvals/bvals.hpp"
 
-const Real cosPiOver8 = 0.923879532511286;
+const Real cospiover8 = 0.923879532511286;
 const Real pi = 3.141592653589793238;
 
 static Real d, u, p;
 Real wl[NHYDRO+NFIELD];
 Real wr[NHYDRO+NFIELD];
 
-// fixes BCs on L-x1 (left edge) of grid to postshock flow.
-void stInner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim, FaceField &b, Real time, Real dt, int is, int ie, int js, int je, int ks, int ke, int ngh);
+// fixes bcs on l-x1 (left edge) of grid to postshock flow.
+void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim, FaceField &b, Real time, Real dt, int is, int ie, int js, int je, int ks, int ke, int ngh);
 
 void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
                     FaceField &b, Real time, Real dt,
 int is, int ie, int js, int je, int ks, int ke, int ngh);
 
-Real Pos(MeshBlock *pmb, int iout);
-Real firstJump_oneDimension(MeshBlock *pmb, int iout);
-Real firstJump_twoDimensions(MeshBlock *pmb, int iout);
-Real secJump_oneDimension(MeshBlock *pmb, int iout);
-Real secJump_twoDimensions(MeshBlock *pmb, int iout);
-
+Real pos(MeshBlock *pmb, int iout);
+Real firstjump_onedimension(MeshBlock *pmb, int iout);
+Real firstjump_twodimensions(MeshBlock *pmb, int iout);
+Real secjump_onedimension(MeshBlock *pmb, int iout);
+Real secjump_twodimensions(MeshBlock *pmb, int iout);
+Real divergenceb(MeshBlock *pmb, int iout);
+Real mhd_jump(MeshBlock *pmb, int iout);
+Real bperp_jc(MeshBlock *pmb, int iout);
+Real bpara_jc(MeshBlock *pmb, int iout);
 //========================================================================================
 //! \fn void Mesh::InitUserMeshData(ParameterInput *pin)
-//  \brief Function to initialize problem-specific data in mesh class.  Can also be used
+//  \brief function to initialize problem-specific data in Mesh class.  can also be used
 //  to initialize variables which are global to (and therefore can be passed to) other
-//  functions in this file.  Called in Mesh constructor.
+//  functions in this FILE.  called in Mesh constructor.
 //========================================================================================
+//give me an error
 
-void Mesh::InitUserMeshData(ParameterInput *pin) {
-// Set IIB value function pointer
-  
-  EnrollUserBoundaryFunction(INNER_X1, stInner_ix1);
-  EnrollUserBoundaryFunction(OUTER_X1, reflect_ox1);
-  AllocateUserHistoryOutput(3);
-  EnrollUserHistoryOutput(0, Pos, "ShockPos");
-  EnrollUserHistoryOutput(1, firstJump_twoDimensions, "first jump");
-  EnrollUserHistoryOutput(2, secJump_twoDimensions, "second jump");
-  return;
-}
-
-
-//probability power law distribution
-Real power_law(Real L, Real a) {
-  return 1/(1+pow(L*a, 8.0/3.0));
+//probability power law distrIBution
+Real power_law(Real l, Real a) {
+  return 1/(1+pow(l*a, 8.0/3.0));
 }
 
 //returns density value for given x, y
-Real return_d(Real x, Real y, int steps, Real variance, Real L, Real avg) {
+Real return_d(Real x, Real y, int steps, Real variance, Real l, Real avg) {
   std::random_device rd;
   std::mt19937 gen(rd());  
   std::uniform_real_distribution<> dis(0.0, 1.0);
 
-  Real k = 0.05*L;
+  Real k = 0.005*l;
   Real res = 0;
-  Real ratio = pow(100, 1.0/steps);
+  Real ratio = pow(1000, 1.0/steps);
   Real delta_k = k;
   Real prev_k = k;
   //return mult;
@@ -94,7 +85,7 @@ Real return_d(Real x, Real y, int steps, Real variance, Real L, Real avg) {
 
   //find normalization constant
   for(int i=0; i<steps; i++) {
-    temp += (2 * pi * k * delta_k * power_law(L, k));
+    temp += (2 * pi * k * delta_k * power_law(l, k));
     prev_k = k;
     k *= ratio;
     delta_k = k - prev_k;
@@ -103,7 +94,7 @@ Real return_d(Real x, Real y, int steps, Real variance, Real L, Real avg) {
   c = variance/temp;
   //return c;  
   
-  k = 0.05*L;
+  k = 0.005*l;
   delta_k = k;
   prev_k = k;
 
@@ -116,7 +107,7 @@ Real return_d(Real x, Real y, int steps, Real variance, Real L, Real avg) {
     phi *= (2*pi);
     
     //calculate
-    Real f1 = sqrt(c * 4 * pi * k * delta_k * power_law(L, k));
+    Real f1 = sqrt(c * 4 * pi * k * delta_k * power_law(l, k));
     Real f2 = cos(k * x * cos(theta) + k * y * sin(theta) + phi);
     res += (f1 * f2);
     //f_values.push_back(f1*f2);
@@ -127,17 +118,15 @@ Real return_d(Real x, Real y, int steps, Real variance, Real L, Real avg) {
   return avg*exp(-0.11957+res);  
 }
 
-//returns x-component of magnetic field
-Real return_mx(Real x, Real y, int steps, Real variance, Real L, Real avg) {
+//returns magnitude potential function at each (x, y)
+Real b_potential(Real x, Real y, int steps, Real variance, Real l, Real avg) {
   std::random_device rd;
   std::mt19937 gen(rd());  
   std::uniform_real_distribution<> dis(0.0, 1.0);
-  if(avg == 0) {
-    return 0.0;
-  }
-  Real k = 0.05*L;
+
+  Real k = 0.005*l;
   Real res = 0;
-  Real ratio = pow(100, 1.0/steps);
+  Real ratio = pow(1000, 1.0/steps);
   Real delta_k = k;
   Real prev_k = k;
   //return mult;
@@ -145,7 +134,7 @@ Real return_mx(Real x, Real y, int steps, Real variance, Real L, Real avg) {
 
   //find normalization constant
   for(int i=0; i<steps; i++) {
-    temp += (2 * pi * k * delta_k * power_law(L, k));
+    temp += (2 * pi * k * delta_k * power_law(l, k));
     prev_k = k;
     k *= ratio;
     delta_k = k - prev_k;
@@ -154,7 +143,7 @@ Real return_mx(Real x, Real y, int steps, Real variance, Real L, Real avg) {
   c = variance/temp;
   //return c;  
   
-  k = 0.05*L;
+  k = 0.005*l;
   delta_k = k;
   prev_k = k;
 
@@ -165,76 +154,58 @@ Real return_mx(Real x, Real y, int steps, Real variance, Real L, Real avg) {
     theta *= (2*pi);
     Real phi = dis(gen);
     phi *= (2*pi);
-    Real alpha = dis(gen);
-    alpha *= (2*pi);
+    
     //calculate
-    Real f1 = sqrt(c * 4 * pi * k * delta_k * power_law(L, k));
+    Real f1 = sqrt(c * 4 * pi * k * delta_k * power_law(l, k));
     Real f2 = cos(k * x * cos(theta) + k * y * sin(theta) + phi);
-    res += (f1 * f2 * cos(alpha));
+    res += (f1 * f2);
     //f_values.push_back(f1*f2);
     prev_k = k;
     k *= ratio;
     delta_k = k - prev_k;
   }
-  return avg*exp(res);  
-}
-
-//returns y-component of magnetic field
-Real return_my(Real x, Real y, int steps, Real variance, Real L, Real avg) {
-  std::random_device rd;
-  std::mt19937 gen(rd());  
-  std::uniform_real_distribution<> dis(0.0, 1.0);
-  if(avg == 0) {
-    return 0.0;
-  }
-  Real k = 0.05*L;
-  Real res = 0;
-  Real ratio = pow(100, 1.0/steps);
-  Real delta_k = k;
-  Real prev_k = k;
-  //return mult;
-  Real c, temp = 0;
-
-  //find normalization constant
-  for(int i=0; i<steps; i++) {
-    temp += (2 * pi * k * delta_k * power_law(L, k));
-    prev_k = k;
-    k *= ratio;
-    delta_k = k - prev_k;
-  }
-
-  c = variance/temp;
-  //return c;  
-  
-  k = 0.05*L;
-  delta_k = k;
-  prev_k = k;
-
-  //sum over wave modes
-  for(int i=0; i<steps; i++) {
-    //generate random angles between 0 and 2pi	  
-    Real theta = dis(gen);
-    theta *= (2*pi);
-    Real phi = dis(gen);
-    phi *= (2*pi);
-    Real alpha = dis(gen);
-    alpha *= (2*pi);
-    //calculate
-    Real f1 = sqrt(c * 4 * pi * k * delta_k * power_law(L, k));
-    Real f2 = cos(k * x * cos(theta) + k * y * sin(theta) + phi);
-    res += (f1 * f2 * sin(alpha));
-    //f_values.push_back(f1*f2);
-    prev_k = k;
-    k *= ratio;
-    delta_k = k - prev_k;
-  }
-  return avg*exp(res);  
+  return res;
 }
 
 
+void Mesh::InitUserMeshData(ParameterInput *pin) {
+// set iib value function pointer
+//	give me an error  
+  EnrollUserBoundaryFunction(INNER_X1, stinner_ix1);
+  EnrollUserBoundaryFunction(OUTER_X1, reflect_ox1);
+  AllocateUserHistoryOutput(5);
+  EnrollUserHistoryOutput(0, pos, "shockpos");
+//  EnrollUserHistoryOutput(1, firstjump_twodimensions, "momflux");
+//  EnrollUserHistoryOutput(2, secjump_twodimensions, "pressurediff");
+  EnrollUserHistoryOutput(1, bpara_jc, "bpara_jc");
+  EnrollUserHistoryOutput(2, bperp_jc, "bperp_jc"); 
+  EnrollUserHistoryOutput(3, mhd_jump, "mhd_jump");
+  EnrollUserHistoryOutput(4, divergenceb, "divb");
+  return;
+}
+
+void MeshBlock::InitUserMeshBlockData(ParameterInput *pin) {
+  AllocateUserOutputVariables(2);
+  AllocateRealUserMeshBlockDataField(2);
+  ruser_meshblock_data[0].NewAthenaArray(260, 260);
+  ruser_meshblock_data[1].NewAthenaArray(4, 260);
+  for(int i=0; i<260; ++i) {
+    for(int j=0; j<260; ++j) {
+      ruser_meshblock_data[0](i, j) = 0.0;
+    }
+  }
+
+  for(int i=0; i<4; ++i) {
+    for(int j=0; j<260; ++j) {
+      ruser_meshblock_data[1](i, j) = 0.0;
+    }
+  }
+
+  return;
+}
 //========================================================================================
 //! \fn void Mesh::UserWorkAfterLoop(ParameterInput *pin)
-//  \brief Calculate L1 errors in Sod (hydro) and RJ2a (MHD) tests
+//  \brief calculate l1 errors in sod (hydro) and rj2a (mhd) tests
 //========================================================================================
 
 void Mesh::UserWorkAfterLoop(ParameterInput *pin) {
@@ -242,32 +213,32 @@ void Mesh::UserWorkAfterLoop(ParameterInput *pin) {
 
   if (!pin->GetOrAddBoolean("problem","compute_error",false)) return;
 
-  // Read shock direction and set array indices
+  // read shock direction and set array indices
   int shk_dir = pin->GetInteger("problem","shock_dir");
-  int im1,im2,im3,ib1,ib2,ib3;
+  int IM1,IM2,IM3,IB1,IB2,IB3;
   if (shk_dir == 1) {
-    im1 = IM1; im2 = IM2; im3 = IM3;
-    ib1 = IB1; ib2 = IB2; ib3 = IB3;
+    IM1 = IM1; IM2 = IM2; IM3 = IM3;
+    IB1 = IB1; IB2 = IB2; IB3 = IB3;
   } else if (shk_dir == 2) {
-    im1 = IM2; im2 = IM3; im3 = IM1;
-    ib1 = IB2; ib2 = IB3; ib3 = IB1;
+    IM1 = IM2; IM2 = IM3; IM3 = IM1;
+    IB1 = IB2; IB2 = IB3; IB3 = IB1;
   } else {
-    im1 = IM3; im2 = IM1; im3 = IM2;
-    ib1 = IB3; ib2 = IB1; ib3 = IB2;
+    IM1 = IM3; IM2 = IM1; IM3 = IM2;
+    IB1 = IB3; IB2 = IB1; IB3 = IB2;
   }
 
-  // Initialize errors to zero
+  // initialize errors to zero
   Real err[NHYDRO+NFIELD];
   for (int i=0; i<(NHYDRO+NFIELD); ++i) err[i]=0.0;
 
-  // Errors in RJ2a test (Dai & Woodward 1994 Tables Ia and Ib)
+  // errors in rj2a test (dai & woodward 1994 tables ia and IB)
   if (MAGNETIC_FIELDS_ENABLED) {
     Real xfp = 2.2638*tlim;
-    Real xrp = (0.53432 + 1.0/std::sqrt(PI*1.309))*tlim;
+    Real xrp = (0.53432 + 1.0/std::sqrt(pi*1.309))*tlim;
     Real xsp = (0.53432 + 0.48144/1.309)*tlim;
     Real xc = 0.57538*tlim;
     Real xsm = (0.60588 - 0.51594/1.4903)*tlim;
-    Real xrm = (0.60588 - 1.0/std::sqrt(PI*1.4903))*tlim;
+    Real xrm = (0.60588 - 1.0/std::sqrt(pi*1.4903))*tlim;
     Real xfm = (1.2 - 2.3305/1.08)*tlim;
     Real gm1 = pmb->peos->GetGamma() - 1.0;
     for (int k=pmb->ks; k<=pmb->ke; k++) {
@@ -278,87 +249,87 @@ void Mesh::UserWorkAfterLoop(ParameterInput *pin) {
         if (shk_dir == 2) r = pmb->pcoord->x2v(j);
         if (shk_dir == 3) r = pmb->pcoord->x3v(k);
 
-        bx = 2.0/std::sqrt(4.0*PI);
+        bx = 2.0/std::sqrt(4.0*pi);
         if (r > xfp) {
           d0 = 1.0;
           mx = 0.0;
           my = 0.0;
           mz = 0.0;
-          by = 4.0/std::sqrt(4.0*PI);
-          bz = 2.0/std::sqrt(4.0*PI);
+          by = 4.0/std::sqrt(4.0*pi);
+          bz = 2.0/std::sqrt(4.0*pi);
           e0 = 1.0/gm1 + 0.5*((mx*mx+my*my+mz*mz)/d0 + (bx*bx+by*by+bz*bz));
         } else if (r > xrp) {
           d0 = 1.3090;
           mx = 0.53432*d0;
           my = -0.094572*d0;
           mz = -0.047286*d0;
-          by = 5.3452/std::sqrt(4.0*PI);
-          bz = 2.6726/std::sqrt(4.0*PI);
+          by = 5.3452/std::sqrt(4.0*pi);
+          bz = 2.6726/std::sqrt(4.0*pi);
           e0 = 1.5844/gm1 + 0.5*((mx*mx+my*my+mz*mz)/d0 + (bx*bx+by*by+bz*bz));
         } else if (r > xsp) {
           d0 = 1.3090;
           mx = 0.53432*d0;
           my = -0.18411*d0;
           mz = 0.17554*d0;
-          by = 5.7083/std::sqrt(4.0*PI);
-          bz = 1.7689/std::sqrt(4.0*PI);
+          by = 5.7083/std::sqrt(4.0*pi);
+          bz = 1.7689/std::sqrt(4.0*pi);
           e0 = 1.5844/gm1 + 0.5*((mx*mx+my*my+mz*mz)/d0 + (bx*bx+by*by+bz*bz));
         } else if (r > xc) {
           d0 = 1.4735;
           mx = 0.57538*d0;
           my = 0.047601*d0;
           mz = 0.24734*d0;
-          by = 5.0074/std::sqrt(4.0*PI);
-          bz = 1.5517/std::sqrt(4.0*PI);
+          by = 5.0074/std::sqrt(4.0*pi);
+          bz = 1.5517/std::sqrt(4.0*pi);
           e0 = 1.9317/gm1 + 0.5*((mx*mx+my*my+mz*mz)/d0 + (bx*bx+by*by+bz*bz));
         } else if (r > xsm) {
           d0 = 1.6343;
           mx = 0.57538*d0;
           my = 0.047601*d0;
           mz = 0.24734*d0;
-          by = 5.0074/std::sqrt(4.0*PI);
-          bz = 1.5517/std::sqrt(4.0*PI);
+          by = 5.0074/std::sqrt(4.0*pi);
+          bz = 1.5517/std::sqrt(4.0*pi);
           e0 = 1.9317/gm1 + 0.5*((mx*mx+my*my+mz*mz)/d0 + (bx*bx+by*by+bz*bz));
         } else if (r > xrm) {
           d0 = 1.4903;
           mx = 0.60588*d0;
           my = 0.22157*d0;
           mz = 0.30125*d0;
-          by = 5.5713/std::sqrt(4.0*PI);
-          bz = 1.7264/std::sqrt(4.0*PI);
+          by = 5.5713/std::sqrt(4.0*pi);
+          bz = 1.7264/std::sqrt(4.0*pi);
           e0 = 1.6558/gm1 + 0.5*((mx*mx+my*my+mz*mz)/d0 + (bx*bx+by*by+bz*bz));
         } else if (r > xfm) {
           d0 = 1.4903;
           mx = 0.60588*d0;
           my = 0.11235*d0;
           mz = 0.55686*d0;
-          by = 5.0987/std::sqrt(4.0*PI);
-          bz = 2.8326/std::sqrt(4.0*PI);
+          by = 5.0987/std::sqrt(4.0*pi);
+          bz = 2.8326/std::sqrt(4.0*pi);
           e0 = 1.6558/gm1 + 0.5*((mx*mx+my*my+mz*mz)/d0 + (bx*bx+by*by+bz*bz));
         } else {
           d0 = 1.08;
           mx = 1.2*d0;
           my = 0.01*d0;
           mz = 0.5*d0;
-          by = 3.6/std::sqrt(4.0*PI);
-          bz = 2.0/std::sqrt(4.0*PI);
+          by = 3.6/std::sqrt(4.0*pi);
+          bz = 2.0/std::sqrt(4.0*pi);
           e0 = 0.95/gm1 + 0.5*((mx*mx+my*my+mz*mz)/d0 + (bx*bx+by*by+bz*bz));
         }
 
         err[IDN] += fabs(d0 - pmb->phydro->u(IDN,k,j,i));
-        err[im1] += fabs(mx - pmb->phydro->u(im1,k,j,i));
-        err[im2] += fabs(my - pmb->phydro->u(im2,k,j,i));
-        err[im3] += fabs(mz - pmb->phydro->u(im3,k,j,i));
+        err[IM1] += fabs(mx - pmb->phydro->u(IM1,k,j,i));
+        err[IM2] += fabs(my - pmb->phydro->u(IM2,k,j,i));
+        err[IM3] += fabs(mz - pmb->phydro->u(IM3,k,j,i));
         err[IEN] += fabs(e0 - pmb->phydro->u(IEN,k,j,i));
-        err[NHYDRO + ib1] += fabs(bx - pmb->pfield->bcc(ib1,k,j,i));
-        err[NHYDRO + ib2] += fabs(by - pmb->pfield->bcc(ib2,k,j,i));
-        err[NHYDRO + ib3] += fabs(bz - pmb->pfield->bcc(ib3,k,j,i));
+        err[NHYDRO + IB1] += fabs(bx - pmb->pfield->bcc(IB1,k,j,i));
+        err[NHYDRO + IB2] += fabs(by - pmb->pfield->bcc(IB2,k,j,i));
+        err[NHYDRO + IB3] += fabs(bz - pmb->pfield->bcc(IB3,k,j,i));
       }
     }}
 
-  // Errors in Sod solution
+  // errors in sod solution
   } else {
-    // Positions of shock, contact, head and foot of rarefaction for Sod test
+    // positions of shock, contact, head and foot of rarefaction for sod test
     Real xs = 1.7522*tlim;
     Real xc = 0.92745*tlim;
     Real xf = -0.07027*tlim;
@@ -395,15 +366,15 @@ void Mesh::UserWorkAfterLoop(ParameterInput *pin) {
           e0 = 2.5;
         }
         err[IDN] += fabs(d0  - pmb->phydro->u(IDN,k,j,i));
-        err[im1] += fabs(m0  - pmb->phydro->u(im1,k,j,i));
-        err[im2] += fabs(0.0 - pmb->phydro->u(im2,k,j,i));
-        err[im3] += fabs(0.0 - pmb->phydro->u(im3,k,j,i));
+        err[IM1] += fabs(m0  - pmb->phydro->u(IM1,k,j,i));
+        err[IM2] += fabs(0.0 - pmb->phydro->u(IM2,k,j,i));
+        err[IM3] += fabs(0.0 - pmb->phydro->u(IM3,k,j,i));
         err[IEN] += fabs(e0  - pmb->phydro->u(IEN,k,j,i));
       }
     }}
   }
 
-  // normalize errors by number of cells, compute RMS
+  // normalize errors by number of cells, compute rms
   for (int i=0; i<(NHYDRO+NFIELD); ++i) {
     err[i] = err[i]/static_cast<Real>(GetTotalCells());
   }
@@ -411,29 +382,29 @@ void Mesh::UserWorkAfterLoop(ParameterInput *pin) {
   for (int i=0; i<(NHYDRO+NFIELD); ++i) rms_err += SQR(err[i]);
   rms_err = std::sqrt(rms_err);
 
-  // open output file and write out errors
+  // open output FILE and write out errors
   std::string fname;
   fname.assign("shock-errors.dat");
   std::stringstream msg;
   FILE *pfile;
 
-  // The file exists -- reopen the file in append mode
+  // the FILE exists -- reopen the FILE in append mode
   if ((pfile = fopen(fname.c_str(),"r")) != NULL) {
     if ((pfile = freopen(fname.c_str(),"a",pfile)) == NULL) {
-      msg << "### FATAL ERROR in function [Mesh::UserWorkAfterLoop]"
-          << std::endl << "Error output file could not be opened" <<std::endl;
+      msg << "### fatal error in function [Mesh::UserWorkAfterLoop]"
+          << std::endl << "error output FILE could not be opened" <<std::endl;
       throw std::runtime_error(msg.str().c_str());
     }
 
-  // The file does not exist -- open the file in write mode and add headers
+  // the FILE does not exist -- open the FILE in write mode and add headers
   } else {
     if ((pfile = fopen(fname.c_str(),"w")) == NULL) {
-      msg << "### FATAL ERROR in function [Mesh::UserWorkAfterLoop]"
-          << std::endl << "Error output file could not be opened" <<std::endl;
+      msg << "### fatal error in function [Mesh::UserWorkAfterLoop]"
+          << std::endl << "error output FILE could not be opened" <<std::endl;
       throw std::runtime_error(msg.str().c_str());
     }
-    fprintf(pfile,"# Nx1  Nx2  Nx3  Ncycle  RMS-Error  d  M1  M2  M3  E");
-    if (MAGNETIC_FIELDS_ENABLED) fprintf(pfile,"  B1c  B2c  B3c");
+    fprintf(pfile,"# nx1  nx2  nx3  ncycle  rms-error  d  m1  m2  m3  e");
+    if (MAGNETIC_FIELDS_ENABLED) fprintf(pfile,"  b1c  b2c  b3c");
     fprintf(pfile,"\n");
   }
 
@@ -452,7 +423,7 @@ void Mesh::UserWorkAfterLoop(ParameterInput *pin) {
 
 //========================================================================================
 //! \fn void MeshBlock::ProblemGenerator(ParameterInput *pin)
-//  \brief Problem Generator for the shock tube tests
+//  \brief problem generator for the shock tube tests
 //========================================================================================
 
 void MeshBlock::ProblemGenerator(ParameterInput *pin) {
@@ -465,24 +436,24 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
   Real xshock = pin->GetReal("problem","xshock");
   if (shk_dir == 1 && (xshock < pmy_mesh->mesh_size.x1min ||
                        xshock > pmy_mesh->mesh_size.x1max)) {
-    msg << "### FATAL ERROR in Problem Generator" << std::endl << "xshock="
+    msg << "### fatal error in problem generator" << std::endl << "xshock="
         << xshock << " lies outside x1 domain for shkdir=" << shk_dir << std::endl;
     throw std::runtime_error(msg.str().c_str());
   }
   if (shk_dir == 2 && (xshock < pmy_mesh->mesh_size.x2min ||
                        xshock > pmy_mesh->mesh_size.x2max)) {
-    msg << "### FATAL ERROR in Problem Generator" << std::endl << "xshock="
+    msg << "### fatal error in problem generator" << std::endl << "xshock="
         << xshock << " lies outside x2 domain for shkdir=" << shk_dir << std::endl;
     throw std::runtime_error(msg.str().c_str());
   }
   if (shk_dir == 3 && (xshock < pmy_mesh->mesh_size.x3min ||
                        xshock > pmy_mesh->mesh_size.x3max)) {
-    msg << "### FATAL ERROR in Problem Generator" << std::endl << "xshock="
+    msg << "### fatal error in problem generator" << std::endl << "xshock="
         << xshock << " lies outside x3 domain for shkdir=" << shk_dir << std::endl;
     throw std::runtime_error(msg.str().c_str());
   }
 
-  // Parse left state read from input file: dl,ul,vl,wl,[pl]
+  // parse left state read from input FILE: dl,ul,vl,wl,[pl]
   //Real wl[NHYDRO+NFIELD];
   wl[IDN] = pin->GetReal("problem","dl");
   wl[IVX] = pin->GetReal("problem","ul");
@@ -495,7 +466,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     wl[NHYDRO+2] = pin->GetReal("problem","bzl");
   }
 
-  // Parse right state read from input file: dr,ur,vr,wr,[pr]
+  // parse right state read from input FILE: dr,ur,vr,wr,[pr]
   //Real wr[NHYDRO+NFIELD];
   wr[IDN] = pin->GetReal("problem","dr");
   wr[IVX] = pin->GetReal("problem","ur");
@@ -508,7 +479,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     wr[NHYDRO+2] = pin->GetReal("problem","bzr");
   }
 
-// Initialize the discontinuity in the Hydro variables ---------------------------------
+// initialize the discontinuity in the hydro variables ---------------------------------
 
   switch(shk_dir) {
 
@@ -521,7 +492,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     for (int j=js; j<=je; ++j) {
       for (int i=is; i<=ie; ++i) {
         if (pcoord->x1v(i) < xshock) {
-          phydro->u(IDN,k,j,i) = return_d((Real)i,(Real)j,100,0.254031,1.0,d);
+          phydro->u(IDN,k,j,i) = return_d((Real)i,(Real)j,1000,0.254031,2.5,d);
 	  //phydro->u(IDN,k,j,i) = wl[IDN];
           phydro->u(IM1,k,j,i) = wl[IVX]*phydro->u(IDN,k,j,i);
           phydro->u(IM2,k,j,i) = wl[IVY]*wl[IDN];
@@ -652,7 +623,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     break;
 
   default:
-    msg << "### FATAL ERROR in Problem Generator" << std::endl
+    msg << "### fatal error in problem generator" << std::endl
         << "shock_dir=" << shk_dir << " must be either 1,2, or 3" << std::endl;
     throw std::runtime_error(msg.str().c_str());
   }
@@ -660,15 +631,45 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
 // now set face-centered (interface) magnetic fields -----------------------------------
 
   if (MAGNETIC_FIELDS_ENABLED) {
+      
+      for (int k=ks; k<=ke; ++k) {
+      for (int j=js; j<=je; ++j) {
+      for (int i=is; i<=ie; ++i) {
+
+ 	  Real xcoord = pcoord->x1v(i);
+          Real ycoord = pcoord->x1v(j);
+ /*    
+          if(MAGNETIC_FIELDS_ENABLED) {
+ 	    ruser_meshblock_data[0](i, j) = b_potential(xcoord,ycoord,1000,0.254031,2.5,1.0);
+        }
+*/
+	}
+    }}
+
     for (int k=ks; k<=ke; ++k) {
     for (int j=js; j<=je; ++j) {
       for (int i=is; i<=ie; ++i) {
-        if (shk_dir==1 && pcoord->x1v(i) < xshock) {
-	  pfield->b.x1f(k,j,i) = wl[NHYDRO];
-	  pfield->b.x2f(k,j,i) = wl[NHYDRO+1];          
-//pfield->b.x1f(k,j,i) =  return_mx((Real)i,(Real)j,100,0.254031,1.0,wl[NHYDRO]);
-	  //pfield->b.x2f(k,j,i) =  return_my((Real)i,(Real)j,100,0.254031,1.0,wl[NHYDRO+1]);
+         if (shk_dir==1 && pcoord->x1v(i) < xshock) {
+/*      	  
+	  Real ycoord = pcoord->x1v(j);
+	  Real xcoord = pcoord->x1v(i);
+          int xdiff = (i < ie) ? 1 : -1;
+          int ydiff = (j < je) ? 1 : -1;	
+          Real ycoord2 = pcoord->x1v(j+ydiff);
+          Real xcoord2 = pcoord->x1v(i+xdiff);
+          Real orig = ruser_meshblock_data[0](i, j);
+          Real ychange = ruser_meshblock_data[0](i, j+ydiff);
+          Real xchange = ruser_meshblock_data[0](i+xdiff, j);
+	
+          //discrete approximation of partial derivative 
+          pfield->b.x1f(k,j,i) = (ychange - orig) / (ycoord2 - ycoord); 
+          pfield->b.x2f(k,j,i) = (orig - xchange) / (xcoord2 - xcoord);
           pfield->b.x3f(k,j,i) = wl[NHYDRO+2];
+*/
+	  pfield->b.x1f(k,j,i) = wl[NHYDRO];
+          pfield->b.x2f(k,j,i) = wl[NHYDRO+1];
+          pfield->b.x3f(k,j,i) = wl[NHYDRO+2];
+        
         } else if (shk_dir==2 && pcoord->x2v(j) < xshock) {
           pfield->b.x1f(k,j,i) = wl[NHYDRO+2];
           pfield->b.x2f(k,j,i) = wl[NHYDRO  ];
@@ -698,7 +699,8 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
         }
       }
     }}
-
+       
+   
     // end by adding bi.x1 at ie+1, bi.x2 at je+1, and bi.x3 at ke+1
 
     for (int k=ks; k<=ke; ++k) {
@@ -717,39 +719,79 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
   return;
 }
 
+//output total magnetic field strength
+void MeshBlock::UserWorkBeforeOutput(ParameterInput *pin) {
+  Real quot;
+  for(int k=ks; k<=ke; ++k) {
+    for(int j=js; j<=je; ++j) {
+      for(int i=is; i<=ie; ++i) {
+	user_out_var(0,k,j,i) = std::sqrt(SQR(pfield->b.x1f(k,j,i))
+				 + SQR(pfield->b.x2f(k,j,i))
+				 + SQR(pfield->b.x3f(k,j,i)));
+      }
+    }
+  }
+  
+  
+}
 
 //----------------------------------------------------------------------------------------
-//! \fn void stInner_ix1()
-//  \brief Sets boundary condition on left X boundary (iib)
-void stInner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
+//! \fn void stinner_ix1()
+//  \brief sets boundary condition on left x boundary (iib)
+void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
                        FaceField &b, Real time, Real dt,
-                       int is, int ie, int js, int je, int ks, int ke, int ngh) {
+                       int is, int ie, int js, int je, int ks, int ke, int ngh){
+  //Real potential_values[ngh+2][je+2];
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
     for (int i=1; i<=ngh; ++i) {
-      prim(IDN,k,j,is-i) = d;
-      //return_d((Real)i,(Real)j,100,0.254031,1.0,wl[IDN]);
+      Real xcoord = pmb->pcoord->x1v(is-i);
+      Real ycoord = pmb->pcoord->x1v(j);
+      prim(IDN,k,j,is-i) = return_d(xcoord,ycoord,1000,0.254031,2.5,wl[IDN]);
       //prim(IDN,k,j,is-i) = d;
       prim(IVX,k,j,is-i) = u;
       prim(IVY,k,j,is-i) = 0.0;
       prim(IVZ,k,j,is-i) = 0.0;
       prim(IPR,k,j,is-i) = p;
-      
+      /*
       if(MAGNETIC_FIELDS_ENABLED) {
-      b.x1f(k,j,is-i) = wl[NHYDRO]; 
-      b.x2f(k,j,is-i) = wl[NHYDRO+1];
-      //b.x1f(k,j,is-i) =  return_mx((Real)i,(Real)j,100,0.254031,1.0,wl[NHYDRO]);
-      //b.x2f(k,j,is-i) =  return_my((Real)i,(Real)j,100,0.254031,1.0,wl[NHYDRO+1]);
-
-      b.x3f(k,j,is-i) = wl[NHYDRO+2];
-      
-	 if (NON_BAROTROPIC_EOS) {
-          pmb->phydro->u(IEN,k,j,is-i) += 0.5*(SQR(b.x1f(k,j,is-i))
-            + SQR(b.x2f(k,j,is-i)) + SQR(b.x3f(k,j,is-i)));
-        }
+        pmb->ruser_meshblock_data[1](i-1,j) = b_potential(xcoord,ycoord,1000,0.254031,2.5,1.0);
       }
+      */
     }
   }}
+  if(MAGNETIC_FIELDS_ENABLED) {
+    for(int k=ks; k<=ke; ++k) {
+    for(int j=js; j<=je; ++j) {
+    for(int i=1; i<=ngh; ++i) {
+/*
+      Real xcoord = pmb->pcoord->x1v(is-i);
+      Real ycoord = pmb->pcoord->x1v(j);
+      int xdiff = (i < ngh) ? 1 : -1;
+      int ydiff = (j < je) ? 1 : -1;	
+      Real ycoord2 = pmb->pcoord->x1v(j+ydiff);
+      Real xcoord2 = pmb->pcoord->x1v(is-i+xdiff);
+      Real orig = pmb->ruser_meshblock_data[1](i-1, j);
+      Real ychange = pmb->ruser_meshblock_data[1](i-1, j+ydiff); 
+      Real xchange = pmb->ruser_meshblock_data[1](i+xdiff-1, j);
+      //taking curl of magnetic potential function   	
+      //discrete approxIMation of partial derivative 
+      b.x1f(k,j,is-i) = (ychange - orig) / (ycoord2 - ycoord); 
+      b.x2f(k,j,is-i) = (orig - xchange) / (xcoord2 - xcoord);
+      b.x3f(k,j,is-i) = wl[NHYDRO+2];
+*/
+      b.x1f(k,j,i) = wl[NHYDRO];
+      b.x2f(k,j,i) = wl[NHYDRO+1];
+      b.x3f(k,j,i) = wl[NHYDRO+2];
+        
+      if (NON_BAROTROPIC_EOS) {
+         pmb->phydro->u(IEN,k,j,is-i) += 0.5*(SQR(b.x1f(k,j,is-i))
+           + SQR(b.x2f(k,j,is-i)) + SQR(b.x3f(k,j,is-i)));
+      }
+
+      }
+    }}
+  }
 }
 
 
@@ -761,7 +803,7 @@ void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
     if (n==(IVX)) {
       for (int k=ks; k<=ke; ++k) {
       for (int j=js; j<=je; ++j) {
-#pragma omp simd
+#pragma omp sIMd
         for (int i=1; i<=ngh; ++i) {
           prim(IVX,k,j,ie+i) = -prim(IVX,k,j,(ie-i+1));  // reflect 1-velocity
         }
@@ -769,7 +811,7 @@ void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
     } else {
       for (int k=ks; k<=ke; ++k) {
       for (int j=js; j<=je; ++j) {
-#pragma omp simd
+#pragma omp sIMd
         for (int i=1; i<=ngh; ++i) {
           prim(n,k,j,ie+i) = prim(n,k,j,(ie-i+1));
         }
@@ -782,7 +824,7 @@ void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
   if (MAGNETIC_FIELDS_ENABLED) {
     for (int k=ks; k<=ke; ++k) {
     for (int j=js; j<=je; ++j) {
-#pragma omp simd
+#pragma omp sIMd
       for (int i=1; i<=ngh; ++i) {
         b.x1f(k,j,(ie+i+1)) = -b.x1f(k,j,(ie-i+1  ));  // reflect 1-field
       }
@@ -790,7 +832,7 @@ void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
 
     for (int k=ks; k<=ke; ++k) {
     for (int j=js; j<=je+1; ++j) {
-#pragma omp simd
+#pragma omp sIMd
       for (int i=1; i<=ngh; ++i) {
         b.x2f(k,j,(ie+i)) =  b.x2f(k,j,(ie-i+1));
       }
@@ -798,7 +840,7 @@ void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
 
     for (int k=ks; k<=ke+1; ++k) {
     for (int j=js; j<=je; ++j) {
-#pragma omp simd
+#pragma omp sIMd
       for (int i=1; i<=ngh; ++i) {
         b.x3f(k,j,(ie+i)) =  b.x3f(k,j,(ie-i+1));
       }
@@ -808,29 +850,32 @@ void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
  
 }
 
-
-//1D/2D
-//Get position of shock
-Real Pos(MeshBlock *pmb, int iout) { 
-  Real m1=-1, pos=5, ld, rd;
+//1d/2d
+//get position of shock
+Real pos(MeshBlock *pmb, int iout) { 
+  Real m1 = 1.0, m2 = 1.0, lsum = 0, rsum = 0;
+  int pos = 0;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
   for (int k=ks; k<=ke; ++k) {
-  for (int j=js; j<=je; ++j) {
-    for (int i=is; i<=ie-3; ++i) {
-      ld = pmb->phydro->u(IDN,k,j,i);
-      rd = pmb->phydro->u(IDN,k,j,i+1);
-      if(rd >= ld + 0.2) {
-	pos = pmb->pcoord->x1v(i);
-	break;
-      }
+  for (int i=ie; i>=is; --i) {
+    rsum = 0;
+    for (int j=js; j<=je; ++j) {
+	rsum += pmb->phydro->w(IVX,k,j,i);     
     }
+    if(i == ie) {
+	lsum = rsum;
+    }
+    if (abs(lsum - rsum) > 5.0) {
+      return pmb->pcoord->x1v(i+1);
+    }
+    lsum = rsum;
   }}
-  return pos;
+  return 5.0;
 }
 
-//1D
-//Checking first hydrodynamic jump condition
-Real firstJump_oneDimension(MeshBlock *pmb, int iout) {
+//1d
+//checking first hydrodynamic jump condition
+Real firstjump_onedimension(MeshBlock *pmb, int iout) {
   Real m1 = 1.0, m2 = 1.0, rd, ld;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
   for (int k=ks; k<=ke; ++k) {
@@ -852,9 +897,9 @@ Real firstJump_oneDimension(MeshBlock *pmb, int iout) {
 
 }
 
-//1D
-//Checking second hydrodynamic jump condition
-Real secJump_oneDimension(MeshBlock *pmb, int iout) {
+//1d
+//checking second hydrodynamic jump condition
+Real secjump_onedimension(MeshBlock *pmb, int iout) {
   Real m1 = 1.0, m2 = 1.0, rd, ld;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
   for (int k=ks; k<=ke; ++k) {
@@ -881,20 +926,23 @@ Real secJump_oneDimension(MeshBlock *pmb, int iout) {
 
 }
 
-//2D
+//2d
 //1st jump condition
-Real firstJump_twoDimensions(MeshBlock *pmb, int iout) {
+Real firstjump_twodimensions(MeshBlock *pmb, int iout) {
   Real m1 = 1.0, m2 = 1.0, lsum = 0, rsum = 0;
   int pos = 0;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
   for (int k=ks; k<=ke; ++k) {
-  for (int i=is; i<=ie; ++i) {
+  for (int i=ie; i>=is; --i) {
     rsum = 0;
     for (int j=js; j<=je; ++j) {
 	rsum += pmb->phydro->w(IVX,k,j,i);     
     }
-    if (i > is && abs(lsum - rsum) > 5.0) {
-      pos = i-1;
+    if(i == ie) {
+	lsum = rsum;
+    }
+    if (abs(lsum - rsum) > 5.0) {
+      pos = i+1;
       break;
     }
     lsum = rsum;
@@ -903,14 +951,14 @@ Real firstJump_twoDimensions(MeshBlock *pmb, int iout) {
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
     for(int i=std::max(is, pos-2); i<=pos; ++i) {
-	lsum += pmb->phydro->w(IVX,k,j,i)*w(IDN,k,j,i);
+	lsum += (pmb->phydro->w(IVX,k,j,i)+1.16)*pmb->phydro->w(IDN,k,j,i);
 	}
   }}
   Real diff1 = pos - std::max(is, pos-2) + 1;
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
     for(int i=std::min(pos+3, ie); i<=std::min(pos+5, ie); ++i) {
-	rsum += pmb->phydro->w(IVX,k,j,i)*w(IDN,k,j,i);
+	rsum += (pmb->phydro->w(IVX,k,j,i)+1.16)*pmb->phydro->w(IDN,k,j,i);
 	}
   }}
   Real diff2 = std::min(pos+5, ie) - std::min(pos+3, ie) + 1;
@@ -920,18 +968,21 @@ Real firstJump_twoDimensions(MeshBlock *pmb, int iout) {
 
 }
 
-Real secJump_twoDimensions(MeshBlock *pmb, int iout) {
+Real secjump_twodimensions(MeshBlock *pmb, int iout) {
   Real m1 = 1.0, m2 = 1.0, lsum = 0, rsum = 0;
   int pos = 0;
   int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
   for (int k=ks; k<=ke; ++k) {
-  for (int i=is; i<=ie; ++i) {
+  for (int i=ie; i>=is; --i) {
     rsum = 0;
     for (int j=js; j<=je; ++j) {
 	rsum += pmb->phydro->w(IVX,k,j,i);     
     }
-    if (i > is && abs(lsum - rsum) > 5.0) {
-      pos = i-1;
+    if(i == ie) {
+	lsum = rsum;
+    }
+    if (abs(lsum - rsum) > 5.0) {
+      pos = i+1;
       break;
     }
     lsum = rsum;
@@ -940,16 +991,16 @@ Real secJump_twoDimensions(MeshBlock *pmb, int iout) {
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
     for(int i=std::max(is, pos-2); i<=pos; ++i) {
-	lsum += pmb->phydro->w(IVX,k,j,i)*w(IDN,k,j,i)*w(IVX,k,j,i) + 
+	lsum += (pmb->phydro->w(IVX,k,j,i)+1.16)*pmb->phydro->w(IDN,k,j,i)*(pmb->phydro->w(IVX,k,j,i)+1.16) + 
 		pmb->phydro->w(IPR,k,j,i);
 	}
   }}
   Real diff1 = pos - std::max(is, pos-2) + 1;
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
-    for(int i=std::min(pos+3, ie); i<=std::min(pos+5, ie); ++i) {		       rsum += pmb->phydro->w(IVX,k,j,i)*w(IDN,k,j,i)*w(IVX,k,j,i) + 
+    for(int i=std::min(pos+3, ie); i<=std::min(pos+5, ie); ++i) {		       rsum += (pmb->phydro->w(IVX,k,j,i)+1.16)*pmb->phydro->w(IDN,k,j,i)*(pmb->phydro->w(IVX,k,j,i)+1.16) + 
 		pmb->phydro->w(IPR,k,j,i);
-}
+    }
   }}
   Real diff2 = std::min(pos+5, ie) - std::min(pos+3, ie) + 1;
   lsum /= (js-je+1)*diff1;
@@ -958,4 +1009,160 @@ Real secJump_twoDimensions(MeshBlock *pmb, int iout) {
 
 }
 
+//check divb
+Real divergenceb(MeshBlock *pmb, int iout) {
+  Real divb=0;
+  int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
+  AthenaArray<Real> face1, face2p, face2m, face3p, face3m;
+  FaceField &b = pmb->pfield->b;
 
+  face1.NewAthenaArray((ie-is)+2*NGHOST+2);
+  face2p.NewAthenaArray((ie-is)+2*NGHOST+1);
+  face2m.NewAthenaArray((ie-is)+2*NGHOST+1);
+  face3p.NewAthenaArray((ie-is)+2*NGHOST+1);
+  face3m.NewAthenaArray((ie-is)+2*NGHOST+1);
+
+  for(int k=ks; k<=ke; k++) {
+    for(int j=js; j<=je; j++) {
+      pmb->pcoord->Face1Area(k,   j,   is, ie+1, face1);
+      pmb->pcoord->Face2Area(k,   j+1, is, ie,   face2p);
+      pmb->pcoord->Face2Area(k,   j,   is, ie,   face2m);
+      pmb->pcoord->Face3Area(k+1, j,   is, ie,   face3p);
+      pmb->pcoord->Face3Area(k,   j,   is, ie,   face3m);
+      for(int i=is; i<=ie; i++) {
+        divb+=(face1(i+1)*b.x1f(k,j,i+1)-face1(i)*b.x1f(k,j,i)
+              +face2p(i)*b.x2f(k,j+1,i)-face2m(i)*b.x2f(k,j,i)
+              +face3p(i)*b.x3f(k+1,j,i)-face3m(i)*b.x3f(k,j,i));
+      }
+    }
+  }
+
+  return divb;
+}
+
+//checking equation 25.20 in shu "the physics of astrophysics" vol. ii
+Real bpara_jc(MeshBlock *pmb, int iout) {
+  Real m1 = 1.0, m2 = 1.0, lsum = 0, rsum = 0;
+  int pos = 0;
+  int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
+  FaceField &b = pmb->pfield->b;
+  for (int k=ks; k<=ke; ++k) {
+  for (int i=ie; i>=is; --i) {
+    rsum = 0;
+    for (int j=js; j<=je; ++j) {
+	rsum += pmb->phydro->w(IVX,k,j,i);     
+    }
+    if(i == ie) {
+	lsum = rsum;
+    }
+    if (abs(lsum - rsum) > 5.0) {
+      pos = i+1;
+      break;
+    }
+    lsum = rsum;
+  }}
+  lsum = 0, rsum = 0;
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for(int i=std::max(is, pos-2); i<=pos; ++i) {
+	lsum += b.x1f(k,j,i)*(pmb->phydro->w(IVY,k,j,i)) 
+		- b.x2f(k,j,i)*(pmb->phydro->w(IVX,k,j,i)+1.16);
+    }
+  }}
+  Real diff1 = pos - std::max(is, pos-2) + 1;
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for(int i=std::min(pos+3, ie); i<=std::min(pos+5, ie); ++i) {		       rsum += b.x1f(k,j,i)*(pmb->phydro->w(IVY,k,j,i)) 
+		- b.x2f(k,j,i)*(pmb->phydro->w(IVX,k,j,i)+1.16);
+    }
+  }}
+  Real diff2 = std::min(pos+5, ie) - std::min(pos+3, ie) + 1;
+  lsum /= (js-je+1)*diff1;
+  rsum /= (js-je+1)*diff2;
+  return lsum - rsum;
+}
+
+//checking equation 25.21
+Real bperp_jc(MeshBlock *pmb, int iout) {
+  Real m1 = 1.0, m2 = 1.0, lsum = 0, rsum = 0;
+  int pos = 0;
+  int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
+  FaceField &b = pmb->pfield->b;
+  for (int k=ks; k<=ke; ++k) {
+  for (int i=ie; i>=is; --i) {
+    rsum = 0;
+    for (int j=js; j<=je; ++j) {
+	rsum += pmb->phydro->w(IVX,k,j,i);     
+    }
+    if(i == ie) {
+	lsum = rsum;
+    }
+    if (abs(lsum - rsum) > 5.0) {
+      pos = i+1;
+      break;
+    }
+    lsum = rsum;
+  }}
+  lsum = 0, rsum = 0;
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for(int i=std::max(is, pos-2); i<=pos; ++i) {
+	lsum += b.x1f(k,j,i);
+    }
+  }}
+  Real diff1 = pos - std::max(is, pos-2) + 1;
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for(int i=std::min(pos+3, ie); i<=std::min(pos+5, ie); ++i) {		       rsum += b.x1f(k,j,i);
+    }
+  }}
+  Real diff2 = std::min(pos+5, ie) - std::min(pos+3, ie) + 1;
+  lsum /= (js-je+1)*diff1;
+  rsum /= (js-je+1)*diff2;
+  return lsum - rsum;
+
+
+}
+
+//checking equation 25.22
+Real mhd_jump(MeshBlock *pmb, int iout) {
+  Real m1 = 1.0, m2 = 1.0, lsum = 0, rsum = 0;
+  int pos = 0;
+  int is=pmb->is, ie=pmb->ie, js=pmb->js, je=pmb->je, ks=pmb->ks, ke=pmb->ke;
+  FaceField &b = pmb->pfield->b;
+  for (int k=ks; k<=ke; ++k) {
+  for (int i=ie; i>=is; --i) {
+    rsum = 0;
+    for (int j=js; j<=je; ++j) {
+	rsum += pmb->phydro->w(IVX,k,j,i);     
+    }
+    if(i == ie) {
+	lsum = rsum;
+    }
+    if (abs(lsum - rsum) > 5.0) {
+      pos = i+1;
+      break;
+    }
+    lsum = rsum;
+  }}
+  lsum = 0, rsum = 0;
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for(int i=std::max(is, pos-2); i<=pos; ++i) {
+	lsum += 4*pi*pmb->phydro->w(IDN,k,j,i)*(pmb->phydro->w(IVX,k,j,i)+1.16)*(pmb->phydro->w(IVY,k,j,i));
+	lsum -= b.x1f(k,j,i)*b.x2f(k,j,i);	
+    }
+  }}
+  Real diff1 = pos - std::max(is, pos-2) + 1;
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for(int i=std::min(pos+3, ie); i<=std::min(pos+5, ie); ++i) {		       rsum += 4*pi*pmb->phydro->w(IDN,k,j,i)*(pmb->phydro->w(IVX,k,j,i)+1.16)*(pmb->phydro->w(IVY,k,j,i));
+	rsum -= b.x1f(k,j,i)*b.x2f(k,j,i);	
+    }
+  }}
+  Real diff2 = std::min(pos+5, ie) - std::min(pos+3, ie) + 1;
+  lsum /= (js-je+1)*diff1;
+  rsum /= (js-je+1)*diff2;
+  return lsum - rsum;
+
+}
