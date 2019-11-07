@@ -492,7 +492,10 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     for (int j=js; j<=je; ++j) {
       for (int i=is; i<=ie; ++i) {
         if (pcoord->x1v(i) < xshock) {
-          phydro->u(IDN,k,j,i) = return_d((Real)i,(Real)j,1000,0.254031,2.5,d);
+	  Real xcoord = pcoord->x1f(i);
+          Real ycoord = pcoord->x2f(j);
+
+          phydro->u(IDN,k,j,i) = return_d(xcoord, ycoord,1000,0.254031,0.5,d);
 	  //phydro->u(IDN,k,j,i) = wl[IDN];
           phydro->u(IM1,k,j,i) = wl[IVX]*phydro->u(IDN,k,j,i);
           phydro->u(IM2,k,j,i) = wl[IVY]*wl[IDN];
@@ -632,25 +635,24 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
 
   if (MAGNETIC_FIELDS_ENABLED) {
       
-      for (int k=ks; k<=ke; ++k) {
       for (int j=js; j<=je; ++j) {
       for (int i=is; i<=ie; ++i) {
 
  	  Real xcoord = pcoord->x1v(i);
           Real ycoord = pcoord->x1v(j);
- /*    
+     
           if(MAGNETIC_FIELDS_ENABLED) {
  	    ruser_meshblock_data[0](i, j) = b_potential(xcoord,ycoord,1000,0.254031,2.5,1.0);
         }
-*/
+
 	}
-    }}
+    }
 
     for (int k=ks; k<=ke; ++k) {
     for (int j=js; j<=je; ++j) {
       for (int i=is; i<=ie; ++i) {
          if (shk_dir==1 && pcoord->x1v(i) < xshock) {
-/*      	  
+      	  
 	  Real ycoord = pcoord->x1v(j);
 	  Real xcoord = pcoord->x1v(i);
           int xdiff = (i < ie) ? 1 : -1;
@@ -665,10 +667,10 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
           pfield->b.x1f(k,j,i) = (ychange - orig) / (ycoord2 - ycoord); 
           pfield->b.x2f(k,j,i) = (orig - xchange) / (xcoord2 - xcoord);
           pfield->b.x3f(k,j,i) = wl[NHYDRO+2];
-*/
-	  pfield->b.x1f(k,j,i) = wl[NHYDRO];
-          pfield->b.x2f(k,j,i) = wl[NHYDRO+1];
-          pfield->b.x3f(k,j,i) = wl[NHYDRO+2];
+
+//	  pfield->b.x1f(k,j,i) = wl[NHYDRO];
+//        pfield->b.x2f(k,j,i) = wl[NHYDRO+1];
+//        pfield->b.x3f(k,j,i) = wl[NHYDRO+2];
         
         } else if (shk_dir==2 && pcoord->x2v(j) < xshock) {
           pfield->b.x1f(k,j,i) = wl[NHYDRO+2];
@@ -745,9 +747,9 @@ void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
     for (int i=1; i<=ngh; ++i) {
-      Real xcoord = pmb->pcoord->x1v(is-i);
-      Real ycoord = pmb->pcoord->x1v(j);
-      prim(IDN,k,j,is-i) = return_d(xcoord,ycoord,1000,0.254031,2.5,wl[IDN]);
+      Real xcoord = pmb->pcoord->x1f(is-i);
+      Real ycoord = pmb->pcoord->x2f(j);
+      prim(IDN,k,j,is-i) = return_d(xcoord,ycoord,1000,0.254031,0.5,wl[IDN]);
       //prim(IDN,k,j,is-i) = d;
       prim(IVX,k,j,is-i) = u;
       prim(IVY,k,j,is-i) = 0.0;
@@ -1166,3 +1168,5 @@ Real mhd_jump(MeshBlock *pmb, int iout) {
   return lsum - rsum;
 
 }
+
+
