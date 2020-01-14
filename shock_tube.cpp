@@ -38,7 +38,7 @@ const Real pi = 3.141592653589793238;
 
 Real wl[NHYDRO+NFIELD];
 Real wr[NHYDRO+NFIELD];
-Real phase_angles[1000]; //phase angles for the wave summation to generate turbulence
+Real xphase_angles[1000], yphase_angles[1000]; //phase angles for the wave summation to generate turbulence
 
 // fixes bcs on l-x1 (left edge) of grid to postshock flow.
 void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim, FaceField &b, Real time, Real dt, int is, int ie, int js, int je, int ks, int ke, int ngh);
@@ -46,7 +46,6 @@ void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim, Face
 void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
                     FaceField &b, Real time, Real dt,
 int is, int ie, int js, int je, int ks, int ke, int ngh);
-
 Real pos(MeshBlock *pmb, int iout);
 Real firstjump_onedimension(MeshBlock *pmb, int iout);
 Real firstjump_twodimensions(MeshBlock *pmb, int iout);
@@ -86,8 +85,7 @@ void MeshBlock::InitUserMeshBlockData(ParameterInput *pin) {
   AllocateRealUserMeshBlockDataField(3);
   ruser_meshblock_data[0].NewAthenaArray(260, 260);
   ruser_meshblock_data[1].NewAthenaArray(4, 260);
-  ruser_meshblock_data[2].NewAthenaArray(1000);
- 
+
 
   for(int i=0; i<260; ++i) {
     for(int j=0; j<260; ++j) {
@@ -116,62 +114,56 @@ void genAngles() {
   std::mt19937 gen(rd());  
   std::uniform_real_distribution<> dis(0.0, 1.0);
 
-  for(int i=0; i<1000; i++) {
-      phase_angles[i] = dis(gen)*2*pi;
+  for(int i=0; i<1000; ++i) {
+        xphase_angles[i] = dis(gen)*2*pi;
+	yphase_angles[i] = dis(gen)*2*pi;
   }
 }  
 
 //returns density value for given x, y
 Real return_d(Real x, Real y, int steps, Real l, Real avg) {
-  std::random_device rd;
-  std::mt19937 gen(rd());  
-  std::uniform_real_distribution<> dis(0.0, 1.0);
-
-  Real k = (2*pi)/(10*l);
+  Real kx = (1.0)/(10*l);
+  Real ky = (1.0)/(10*l);
   Real res = 0.0;
   Real ratio = pow(16.0, 1.0/(steps));
-  Real norm_constant = 0.0;
-  Real theta, xwave, ywave, amplitude;
-  for(int i=0; i<steps; i++) {
-      amplitude = 1/(1+pow(k, 2.66666667));
-      norm_constant += amplitude;
-      k *= ratio;
-  }
-  k = (2*pi)/(10*l);
+
+  Real xwave, ywave, amplitude;
   //sum over wave modes
-  for(int i=0; i<steps; i++) {
-     //random angle
-      theta = dis(gen)*2*pi;
-      xwave = cos(k*cos(theta)*x + phase_angles[i]);
-      ywave = cos(k*sin(theta)*y + phase_angles[i]);
-      amplitude = 1/(1+pow(k, 2.66666667));
-      res += xwave*ywave*amplitude;
-      k *= ratio;
+  for(int i=0; i<steps; ++i) {
+      for(int j=0; j<steps; ++j) {
+     	 xwave = cos(2*pi*kx*x);// + xphase_angles[i]);
+     	 ywave = cos(2*pi*ky*y);// + yphase_angles[j]);
+      	 amplitude = 1.0;
+	 res += xwave*ywave*amplitude;
+      	 ky *= ratio;
+      }
+      ky = 1.0/(10*l);
+      kx *= ratio;
   }
-  return exp(res/norm_constant);  
+  return avg*res;  
 }
 
 //returns magnitude potential function at each (x, y)
 Real b_potential(Real x, Real y, int steps, Real l) {
-  std::random_device rd;
-  std::mt19937 gen(rd());  
-  std::uniform_real_distribution<> dis(0.0, 1.0);
-
-  Real k = (2*pi)/(10*l);
+  Real kx = (1.0)/(10*l);
+  Real ky = (1.0)/(10*l);
   Real res = 0.0;
   Real ratio = pow(16.0, 1.0/(steps));
-  Real theta, xwave, ywave, amplitude;
+
+  Real xwave, ywave, amplitude;
   //sum over wave modes
-  for(int i=0; i<steps; i++) {
-     //random angle
-      theta = dis(gen)*2*pi;
-      xwave = cos(k*cos(theta)*x + phase_angles[i]);
-      ywave = cos(k*sin(theta)*y + phase_angles[i]);
-      amplitude = 1/(1+pow(k, 2.66666667));
-      res += xwave*ywave*amplitude;
-      k *= ratio;
+  for(int i=0; i<steps; ++i) {
+      for(int j=0; j<steps; ++j) {
+     	 xwave = cos(2*pi*kx*x + xphase_angles[i]);
+     	 ywave = cos(2*pi*ky*y + yphase_angles[j]);
+      	 amplitude = 1.0;
+     	 res += xwave*ywave*amplitude;
+      	 ky *= ratio;
+      }
+      ky = 1/(10*l);
+      kx *= ratio;
   }
-  return res;
+  return res;  
 }
 
 
@@ -181,7 +173,7 @@ Real b_potential(Real x, Real y, int steps, Real l) {
 //========================================================================================
 
 void MeshBlock::ProblemGenerator(ParameterInput *pin) {
-
+  Real norm = 0.0;
   wl[IDN] = pin->GetReal("problem","dl");
   wl[IVX] = pin->GetReal("problem","ul");
   wl[IVY] = pin->GetReal("problem","vl");
@@ -199,6 +191,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
 	Real xcoord = pcoord->x1v(i);
 	Real ycoord = pcoord->x2v(j);
 	phydro->u(IDN,k,j,i) = return_d(xcoord,ycoord,1000,1.0,wl[IDN]);
+	norm += SQR(phydro->u(IDN,k,j,i));
 	//phydro->u(IDN,k,j,i) = wl[IDN];
         phydro->u(IM1,k,j,i) = wl[IVX]*phydro->u(IDN,k,j,i);
         phydro->u(IM2,k,j,i) = wl[IVY]*phydro->u(IDN,k,j,i);
@@ -209,9 +202,17 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
       }
     }
    }
-
+  norm = std::sqrt(norm/((ke-ks+1)*(je-js+1)*(ie-is+1)));
+  for (int k=ks; k<=ke; ++k) {
+  for (int j=js; j<=je; ++j) {
+    for (int i=is; i<=ie; ++i) {
+	phydro->u(IDN,k,j,i)=exp(phydro->u(IDN,k,j,i)/norm);    
+     }
+    }
+   }
+   
 // now set face-centered (interface) magnetic fields -----------------------------------
-
+  Real normb = 0.0;
   if (MAGNETIC_FIELDS_ENABLED) {
       
       for (int j=js; j<=je; ++j) {
@@ -242,17 +243,28 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
           pfield->b.x1f(k,j,i) = (ychange - orig) / (ycoord2 - ycoord); 
           pfield->b.x2f(k,j,i) = (orig - xchange) / (xcoord2 - xcoord);
           pfield->b.x3f(k,j,i) = wl[NHYDRO+2];
-
+	  normb += SQR(pfield->b.x1f(k,j,i)) + SQR(pfield->b.x2f(k,j,i));
 //	  pfield->b.x1f(k,j,i) = wl[NHYDRO];
 //        pfield->b.x2f(k,j,i) = wl[NHYDRO+1];
 //        pfield->b.x3f(k,j,i) = wl[NHYDRO+2];
         
-       if (NON_BAROTROPIC_EOS) {
+       }
+    }}
+
+    normb = std::sqrt(normb/((ks-ke+1)*(js-je+1)*(is-ie+1)));
+    for(int k=ks; k<=ke; ++k) {
+	for(int j=js; j<=je; ++j) {
+	   for(int i=is; i<=ie; ++i) {
+		pfield->b.x1f(k,j,i)/=normb;
+		pfield->b.x2f(k,j,i)/=normb;
+                if (NON_BAROTROPIC_EOS) {
           phydro->u(IEN,k,j,i) += 0.5*(SQR(pfield->b.x1f(k,j,i))
             + SQR(pfield->b.x2f(k,j,i)) + SQR(pfield->b.x3f(k,j,i)));
-        }
-      }
-    }}
+        	}	
+
+	   }
+	}
+    }
        
    
     // end by adding bi.x1 at ie+1, bi.x2 at je+1, and bi.x3 at ke+1
@@ -293,6 +305,7 @@ void MeshBlock::UserWorkBeforeOutput(ParameterInput *pin) {
 void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
                        FaceField &b, Real time, Real dt,
                        int is, int ie, int js, int je, int ks, int ke, int ngh){
+  Real norm = 0.0;	
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
     for (int i=1; i<=ngh; ++i) {
@@ -300,6 +313,7 @@ void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
       Real ycoord = pmb->pcoord->x2v(j);
 	  
       prim(IDN,k,j,is-i) = return_d(xcoord,ycoord,1000,1.0,1.0);
+      norm += SQR(prim(IDN,k,j,is-i));
       prim(IVX,k,j,is-i) = 1.0;
       prim(IVY,k,j,is-i) = 0.0;
       prim(IVZ,k,j,is-i) = 0.0;
@@ -312,7 +326,16 @@ void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
      
     }
   }}
+  norm = std::sqrt(norm/((ke-ks+1)*(je-js+1)*(ngh)));
+  for(int k=ks; k<=ke; ++k) {
+    for(int j=js; j<=je; ++j) {
+      for(int i=1; i<=ngh; ++i) {
+	 prim(IDN,k,j,is-i) = exp(prim(IDN,k,j,is-i)/norm);
+      }
+    }
+  } 
   if(MAGNETIC_FIELDS_ENABLED) {
+    Real normb = 0.0;
     for(int k=ks; k<=ke; ++k) {
     for(int j=js; j<=je; ++j) {
     for(int i=1; i<=ngh; ++i) {
@@ -331,22 +354,31 @@ void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
       b.x1f(k,j,is-i) = (ychange - orig) / (ycoord2 - ycoord); 
       b.x2f(k,j,is-i) = (orig - xchange) / (xcoord2 - xcoord);
       b.x3f(k,j,is-i) = wl[NHYDRO+2];
-
+      normb += SQR(b.x1f(k,j,is-i)) + SQR(b.x2f(k,j,is-i));
 //      b.x1f(k,j,i) = wl[NHYDRO];
 //      b.x2f(k,j,i) = wl[NHYDRO+1];
 //      b.x3f(k,j,i) = wl[NHYDRO+2];
         
-      if (NON_BAROTROPIC_EOS) {
-         pmb->phydro->u(IEN,k,j,is-i) += 0.5*(SQR(b.x1f(k,j,is-i))
-           + SQR(b.x2f(k,j,is-i)) + SQR(b.x3f(k,j,is-i)));
-      }
-
       }
     }}
+    normb = std::sqrt(normb/((ke-ks+1)*(je-js+1)*(ngh)));
+    for(int k=ks; k<=ke; ++k) {
+    for(int j=js; j<=je; ++j) {
+      for(int i=1; i<=ngh; ++i) {
+         b.x1f(k,j,is-i)/=normb;
+	 b.x2f(k,j,is-i)/=normb;
+ 	 if (NON_BAROTROPIC_EOS) {
+         pmb->phydro->u(IEN,k,j,is-i) += 0.5*(SQR(b.x1f(k,j,is-i))
+           + SQR(b.x2f(k,j,is-i)) + SQR(b.x3f(k,j,is-i)));
+         }
+      }
+    }
+    }   
+
   }
 }
 
-
+ 
 void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
                     FaceField &b, Real time, Real dt,
                     int is, int ie, int js, int je, int ks, int ke, int ngh) {
