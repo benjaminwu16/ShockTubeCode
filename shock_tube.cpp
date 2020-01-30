@@ -36,10 +36,12 @@
 const Real cospiover8 = 0.923879532511286;
 const Real pi = 3.141592653589793238;
 
+Real starting_k;
+int steps; //cannot go higher than 50
 Real wl[NHYDRO+NFIELD];
 Real wr[NHYDRO+NFIELD];
-Real xphase_angles[1000], yphase_angles[1000]; //phase angles for the wave summation to generate turbulence
-
+Real xphase_angles[50][50], yphase_angles[50][50]; //phase angles for the wave summation to generate turbulence
+Real boundary[5][260];
 // fixes bcs on l-x1 (left edge) of grid to postshock flow.
 void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim, FaceField &b, Real time, Real dt, int is, int ie, int js, int je, int ks, int ke, int ngh);
 
@@ -68,24 +70,23 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
 //	give me an error  
   EnrollUserBoundaryFunction(INNER_X1, stinner_ix1);
   EnrollUserBoundaryFunction(OUTER_X1, reflect_ox1);
-  AllocateUserHistoryOutput(5);
-  EnrollUserHistoryOutput(0, pos, "shockpos");
+  AllocateUserHistoryOutput(1);
+//  EnrollUserHistoryOutput(0, pos, "shockpos");
 //  EnrollUserHistoryOutput(1, firstjump_twodimensions, "momflux");
 //  EnrollUserHistoryOutput(2, secjump_twodimensions, "pressurediff");
-  EnrollUserHistoryOutput(1, bpara_jc, "bpara_jc");
-  EnrollUserHistoryOutput(2, bperp_jc, "bperp_jc"); 
-  EnrollUserHistoryOutput(3, mhd_jump, "mhd_jump");
-  EnrollUserHistoryOutput(4, divergenceb, "divb");
+//  EnrollUserHistoryOutput(1, bpara_jc, "bpara_jc");
+//  EnrollUserHistoryOutput(2, bperp_jc, "bperp_jc"); 
+//  EnrollUserHistoryOutput(3, mhd_jump, "mhd_jump");
+  EnrollUserHistoryOutput(0, divergenceb, "divb");
   
   return;
 }
 
 void MeshBlock::InitUserMeshBlockData(ParameterInput *pin) {
   AllocateUserOutputVariables(2);
-  AllocateRealUserMeshBlockDataField(3);
+  AllocateRealUserMeshBlockDataField(2);
   ruser_meshblock_data[0].NewAthenaArray(260, 260);
   ruser_meshblock_data[1].NewAthenaArray(4, 260);
-
 
   for(int i=0; i<260; ++i) {
     for(int j=0; j<260; ++j) {
@@ -93,13 +94,11 @@ void MeshBlock::InitUserMeshBlockData(ParameterInput *pin) {
     }
   }
 
-
   for(int i=0; i<4; ++i) {
     for(int j=0; j<260; ++j) {
       ruser_meshblock_data[1](i, j) = 0.0;
     }
   }
-
   return;
 }
 
@@ -114,16 +113,19 @@ void genAngles() {
   std::mt19937 gen(rd());  
   std::uniform_real_distribution<> dis(0.0, 1.0);
 
-  for(int i=0; i<1000; ++i) {
-        xphase_angles[i] = dis(gen)*2*pi;
-	yphase_angles[i] = dis(gen)*2*pi;
+  for(int i=0; i<steps; ++i) {
+     for(int j=0; j<steps; ++j) {
+	xphase_angles[i][j] = dis(gen)*2*pi;
+	yphase_angles[i][j] = dis(gen)*2*pi;
+     }
   }
+  
 }  
 
 //returns density value for given x, y
-Real return_d(Real x, Real y, int steps, Real l, Real avg) {
-  Real kx = (1.0)/(10*l);
-  Real ky = (1.0)/(10*l);
+Real return_d(Real x, Real y, Real l, Real avg) {
+  Real kx = starting_k;
+  Real ky = starting_k;
   Real res = 0.0;
   Real ratio = pow(16.0, 1.0/(steps));
 
@@ -131,9 +133,9 @@ Real return_d(Real x, Real y, int steps, Real l, Real avg) {
   //sum over wave modes
   for(int i=0; i<steps; ++i) {
       for(int j=0; j<steps; ++j) {
-     	 xwave = cos(2*pi*kx*x);// + xphase_angles[i]);
-     	 ywave = cos(2*pi*ky*y);// + yphase_angles[j]);
-      	 amplitude = 1.0;
+     	 xwave = cos(2*pi*kx*x + xphase_angles[i][j]);
+     	 ywave = cos(2*pi*ky*y + yphase_angles[i][j]);
+      	 amplitude = 1.0/(1+pow(kx*kx+ky*ky, 1.333333));
 	 res += xwave*ywave*amplitude;
       	 ky *= ratio;
       }
@@ -144,9 +146,9 @@ Real return_d(Real x, Real y, int steps, Real l, Real avg) {
 }
 
 //returns magnitude potential function at each (x, y)
-Real b_potential(Real x, Real y, int steps, Real l) {
-  Real kx = (1.0)/(10*l);
-  Real ky = (1.0)/(10*l);
+Real b_potential(Real x, Real y, Real l, Real avg) {
+  Real kx = starting_k;
+  Real ky = starting_k;
   Real res = 0.0;
   Real ratio = pow(16.0, 1.0/(steps));
 
@@ -154,16 +156,16 @@ Real b_potential(Real x, Real y, int steps, Real l) {
   //sum over wave modes
   for(int i=0; i<steps; ++i) {
       for(int j=0; j<steps; ++j) {
-     	 xwave = cos(2*pi*kx*x + xphase_angles[i]);
-     	 ywave = cos(2*pi*ky*y + yphase_angles[j]);
-      	 amplitude = 1.0;
+     	 xwave = cos(2*pi*kx*x + xphase_angles[i][j]);
+     	 ywave = cos(2*pi*ky*y + yphase_angles[i][j]);
+      	 amplitude = 1.0/(1+pow(kx*kx+ky*ky, 1.333333));
      	 res += xwave*ywave*amplitude;
       	 ky *= ratio;
       }
       ky = 1/(10*l);
       kx *= ratio;
   }
-  return res;  
+  return avg*res;  
 }
 
 
@@ -178,6 +180,8 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
   wl[IVX] = pin->GetReal("problem","ul");
   wl[IVY] = pin->GetReal("problem","vl");
   wl[IVZ] = pin->GetReal("problem","wl");
+  starting_k = pin->GetReal("problem","startingK");
+  steps = pin->GetInteger("problem","steps");
   if (NON_BAROTROPIC_EOS) wl[IPR] = pin->GetReal("problem","pl");
   if (MAGNETIC_FIELDS_ENABLED) {
     wl[NHYDRO  ] = pin->GetReal("problem","bxl");
@@ -190,12 +194,9 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     for (int i=is; i<=ie; ++i) {
 	Real xcoord = pcoord->x1v(i);
 	Real ycoord = pcoord->x2v(j);
-	phydro->u(IDN,k,j,i) = return_d(xcoord,ycoord,1000,1.0,wl[IDN]);
+	phydro->u(IDN,k,j,i) = return_d(xcoord,ycoord,1.0,wl[IDN]);
 	norm += SQR(phydro->u(IDN,k,j,i));
 	//phydro->u(IDN,k,j,i) = wl[IDN];
-        phydro->u(IM1,k,j,i) = wl[IVX]*phydro->u(IDN,k,j,i);
-        phydro->u(IM2,k,j,i) = wl[IVY]*phydro->u(IDN,k,j,i);
-        phydro->u(IM3,k,j,i) = wl[IVZ]*phydro->u(IDN,k,j,i);
         if (NON_BAROTROPIC_EOS) phydro->u(IEN,k,j,i) =
           wl[IPR]/(peos->GetGamma() - 1.0)
           + 0.5*phydro->u(IDN,k,j,i)*(wl[IVX]*wl[IVX] + wl[IVY]*wl[IVY] + wl[IVZ]*wl[IVZ]);
@@ -206,7 +207,14 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
   for (int k=ks; k<=ke; ++k) {
   for (int j=js; j<=je; ++j) {
     for (int i=is; i<=ie; ++i) {
-	phydro->u(IDN,k,j,i)=exp(phydro->u(IDN,k,j,i)/norm);    
+	phydro->u(IDN,k,j,i)=exp(phydro->u(IDN,k,j,i)/norm);   
+        phydro->u(IM1,k,j,i) = wl[IVX]*phydro->u(IDN,k,j,i);
+        phydro->u(IM2,k,j,i) = wl[IVY]*phydro->u(IDN,k,j,i);
+        phydro->u(IM3,k,j,i) = wl[IVZ]*phydro->u(IDN,k,j,i);
+        if (NON_BAROTROPIC_EOS) phydro->u(IEN,k,j,i) =
+          wl[IPR]/(peos->GetGamma() - 1.0)
+          + 0.5*phydro->u(IDN,k,j,i)*(wl[IVX]*wl[IVX] + wl[IVY]*wl[IVY] + wl[IVZ]*wl[IVZ]);
+ 	
      }
     }
    }
@@ -219,7 +227,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
       for (int i=is; i<=ie; ++i) {
     	  Real xcoord = pcoord->x1v(i);
 	  Real ycoord = pcoord->x2v(j);
-	  ruser_meshblock_data[0](i,j) = b_potential(xcoord,ycoord,1000,1.0);
+	  ruser_meshblock_data[0](i,j) = b_potential(xcoord,ycoord,1.0, wl[NHYDRO]);
         
 	}
     }
@@ -289,7 +297,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
 void MeshBlock::UserWorkBeforeOutput(ParameterInput *pin) {
   for(int k=ks; k<=ke; ++k) {
     for(int j=js; j<=je; ++j) {
-      for(int i=is; i<=ie; ++i) {
+      for(int i=is-NGHOST; i<=ie+NGHOST; ++i) {
 	user_out_var(0,k,j,i) = std::sqrt(SQR(pfield->b.x1f(k,j,i))
 				 + SQR(pfield->b.x2f(k,j,i))
 				 + SQR(pfield->b.x3f(k,j,i)));
@@ -312,12 +320,12 @@ void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
       Real xcoord = pmb->pcoord->x1v(is-i);
       Real ycoord = pmb->pcoord->x2v(j);
 	  
-      prim(IDN,k,j,is-i) = return_d(xcoord,ycoord,1000,1.0,1.0);
+      prim(IDN,k,j,is-i) = return_d(xcoord,ycoord,1.0,wl[IDN]);
       norm += SQR(prim(IDN,k,j,is-i));
-      prim(IVX,k,j,is-i) = 1.0;
+      prim(IVX,k,j,is-i) = wl[IVX];
       prim(IVY,k,j,is-i) = 0.0;
       prim(IVZ,k,j,is-i) = 0.0;
-      prim(IPR,k,j,is-i) = 1.0;
+      prim(IPR,k,j,is-i) = wl[IPR];
 
       if(MAGNETIC_FIELDS_ENABLED) {
 	
@@ -326,6 +334,7 @@ void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
      
     }
   }}
+  //normalize density by dividing by quadratic mean (N = # of ghost cells)
   norm = std::sqrt(norm/((ke-ks+1)*(je-js+1)*(ngh)));
   for(int k=ks; k<=ke; ++k) {
     for(int j=js; j<=je; ++j) {
@@ -345,12 +354,12 @@ void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
       int xdiff = (i < ngh) ? 1 : -1;
       int ydiff = (j < je) ? 1 : -1;	
       Real ycoord2 = pmb->pcoord->x2v(j+ydiff);
-      Real xcoord2 = pmb->pcoord->x1v(is-i+xdiff);
+      Real xcoord2 = pmb->pcoord->x1v(is-i-xdiff);
       Real orig = pmb->ruser_meshblock_data[1](i-1, j);
       Real ychange = pmb->ruser_meshblock_data[1](i-1, j+ydiff); 
       Real xchange = pmb->ruser_meshblock_data[1](i+xdiff-1, j);
       //taking curl of magnetic potential function   	
-      //discrete approxIMation of partial derivative 
+      //discrete approximation of partial derivative 
       b.x1f(k,j,is-i) = (ychange - orig) / (ycoord2 - ycoord); 
       b.x2f(k,j,is-i) = (orig - xchange) / (xcoord2 - xcoord);
       b.x3f(k,j,is-i) = wl[NHYDRO+2];
@@ -361,6 +370,7 @@ void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
         
       }
     }}
+    //normalize magnetic field
     normb = std::sqrt(normb/((ke-ks+1)*(je-js+1)*(ngh)));
     for(int k=ks; k<=ke; ++k) {
     for(int j=js; j<=je; ++j) {
@@ -376,9 +386,8 @@ void stinner_ix1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
     }   
 
   }
-}
+} 
 
- 
 void reflect_ox1(MeshBlock *pmb, Coordinates *pco, AthenaArray<Real> &prim,
                     FaceField &b, Real time, Real dt,
                     int is, int ie, int js, int je, int ks, int ke, int ngh) {
